@@ -4,7 +4,7 @@
     <TABLE NAME="local_districtupdate_dist" COMMENT="District review district">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
-        <FIELD NAME="name" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" DEFAULT="" />
+        <FIELD NAME="name" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" />
         <FIELD NAME="domains" TYPE="text" NOTNULL="true" SEQUENCE="false" />
         <FIELD NAME="aliases" TYPE="text" NOTNULL="true" SEQUENCE="false" />
       </FIELDS>
@@ -64,13 +64,13 @@
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
         <FIELD NAME="reviewid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
         <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
-        <FIELD NAME="username" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="100" DEFAULT="" />
-        <FIELD NAME="fullname" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" DEFAULT="" />
-        <FIELD NAME="email" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="100" DEFAULT="" />
-        <FIELD NAME="institution" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" DEFAULT="" />
+        <FIELD NAME="username" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="100" />
+        <FIELD NAME="fullname" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" />
+        <FIELD NAME="email" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="100" />
+        <FIELD NAME="institution" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" />
         <FIELD NAME="status" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="12" DEFAULT="still" />
         <FIELD NAME="destination" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
-        <FIELD NAME="targetcompany" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" DEFAULT="" />
+        <FIELD NAME="targetcompany" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" />
         <FIELD NAME="note" TYPE="text" NOTNULL="true" SEQUENCE="false" />
         <FIELD NAME="modifiedby" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
         <FIELD NAME="modifiedat" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
@@ -90,7 +90,7 @@
         <FIELD NAME="rosterid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
         <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
         <FIELD NAME="actorid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
-        <FIELD NAME="event" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="50" DEFAULT="" />
+        <FIELD NAME="event" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="50" />
         <FIELD NAME="detail" TYPE="text" NOTNULL="true" SEQUENCE="false" />
         <FIELD NAME="timecreated" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
       </FIELDS>

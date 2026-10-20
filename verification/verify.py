@@ -22,6 +22,11 @@ for table in tables:
     cols = [f.attrib['NAME'] for f in table.findall('./FIELDS/FIELD')]
     fields[name] = set(cols)
     assert len(cols) == len(set(cols)) and cols[0] == 'id'
+    for field in table.findall('./FIELDS/FIELD'):
+        if field.attrib['TYPE'] == 'char' and field.attrib.get('NOTNULL') == 'true':
+            assert field.attrib.get('DEFAULT') != '', (
+                f"{name}.{field.attrib['NAME']}: XMLDB forbids an empty default on CHAR NOT NULL"
+            )
     assert table.find('./KEYS/KEY').attrib['TYPE'] == 'primary'
     for index in table.findall('./INDEXES/INDEX'):
         assert set(index.attrib['FIELDS'].replace(' ', '').split(',')) <= set(cols)

@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><title>ECBOCES District Update setup</title><style>body{font:16px/1.5 system-ui;max-width:1000px;margin:2em auto;padding:1em}pre{white-space:pre-wrap}</style><h1>ECBOCES District Update setup</h1><pre># ECBOCES District Update
 
-A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.0.** AD writes and automatic annual invitations default to off.
+A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.1.** AD writes and automatic annual invitations default to off.
 
 ## What districts see
 
@@ -20,12 +20,16 @@ Company is changed in AD. Your existing LDAP mapping and sync carries it into Mo
 
 ## Install
 
-1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.0.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
+1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.1.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
 2. Complete the upgrade through **Site administration → Notifications**. No core file edits are needed.
 3. Open **Site administration → Plugins → Local plugins → District staff review** for settings, and **Manage district staff reviews** for districts and annual rosters. Direct dashboard: `/local/districtupdate/index.php`; management: `/local/districtupdate/manage.php`.
 4. Keep **Enable approved AD writes** and **Automatically start annual reviews** off while setting up and checking the roster.
 
 The installer creates six plugin tables. The ZIP contains one `districtupdate/` directory. The repository root is the plugin source; do not install the parent folder name `districtupdate-main` as the Moodle plugin directory.
+
+## Updating from 0.1.0
+
+Version 0.1.1 removes empty-string defaults from all seven required CHAR fields in the installation schema. Moodle XMLDB already normalizes these defaults when creating tables, so this correction does not change existing data or require a database migration. Replace the existing plugin files with this version and visit **Site administration → Notifications** to finish installation or apply the version update. Do not uninstall the plugin to apply this fix.
 
 ## Configure districts and reviewers
 
