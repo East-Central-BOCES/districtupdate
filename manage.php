@@ -27,13 +27,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $DB->delete_records('local_districtupdate_access', ['districtid' => $id]);
   foreach ($userids as $userid) { $DB->insert_record('local_districtupdate_access', (object)['districtid' => $id, 'userid' => $userid]); }
   \local_districtupdate\service::audit(0, 0, 'district_configured', ['districtid' => $id, 'reviewercount' => count($userids)]);
-  $tx->allow_commit(); redirect($url, 'District saved. New districts appear in the next annual roster.');
+  $tx->allow_commit(); redirect($url, 'District saved. Refresh an existing annual roster to include new districts or matching changes.');
  } elseif ($action === 'create') {
   $date = required_param('due', PARAM_RAW_TRIMMED);
   $due = DateTimeImmutable::createFromFormat('!Y-m-d', $date, core_date::get_server_timezone_object());
   if (!$due || $due->format('Y-m-d') !== $date) { \local_districtupdate\service::fail('Choose a valid due date.'); }
   \local_districtupdate\service::create_cycle(required_param('year', PARAM_INT), $due->setTime(23,59,59)->getTimestamp());
   redirect($url, 'Annual roster created. Review unmatched accounts before sending invitations.');
+ } elseif ($action === 'refresh') {
+  $result = \local_districtupdate\service::refresh_cycle(required_param('cycleid', PARAM_INT));
+  redirect($url, 'Rosters refreshed from Moodle. Added: '.$result['added'].'; updated: '.$result['updated']
+   .'; reassigned: '.$result['moved'].'; removed inactive/excluded untouched entries: '.$result['removed']
+   .'; reviewed entries preserved: '.$result['preserved'].'; submitted/processed reviews left unchanged: '.$result['locked']
+   .'; accounts skipped because a review is locked: '.$result['skipped'].'. No emails or AD changes were made.');
  } elseif ($action === 'invite') {
   $reviewid = required_param('reviewid', PARAM_INT);
   \local_districtupdate\service::invite($reviewid); redirect($url, 'Invitation attempted. See the audit for delivery results.');
@@ -102,6 +108,11 @@ echo '<label>Due date '.local_districtupdate_input('due', userdate(time() + 30 *
 echo local_districtupdate_button('Create annual roster', 'action', 'create').'</form>';
 foreach ($DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC') as $cycle) {
  echo $OUTPUT->heading($cycle->reviewyear.' review — due '.userdate($cycle->duedate), 3);
+ echo local_districtupdate_formstart($url).local_districtupdate_hidden('cycleid', $cycle->id)
+  .local_districtupdate_button('Refresh rosters from Moodle', 'action', 'refresh').'</form>';
+ echo html_writer::tag('p', 'Refresh adds newly synced users and newly configured districts, updates untouched entries, and removes inactive untouched entries. '
+  .'District responses and manual assignments are preserved. Submitted or processed reviews stay unchanged; reopen an unprocessed submitted review first if needed. '
+  .'This uses the users already synced into Moodle and does not run an LDAP sync or send email.');
  echo local_districtupdate_formstart($url).local_districtupdate_hidden('cycleid', $cycle->id).local_districtupdate_button('Send invitations to all outstanding districts', 'action', 'inviteall').'</form>';
  $rows = [];
  foreach ($DB->get_records('local_districtupdate_review', ['cycleid' => $cycle->id], 'districtid') as $r) {

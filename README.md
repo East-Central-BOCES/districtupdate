@@ -1,6 +1,6 @@
 # ECBOCES District Update
 
-A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.2.** AD writes and automatic annual invitations default to off.
+A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.3.** AD writes and automatic annual invitations default to off.
 
 ## What districts see
 
@@ -20,7 +20,7 @@ Company is changed in AD. Your existing LDAP mapping and sync carries it into Mo
 
 ## Install
 
-1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.2.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
+1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.3.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
 2. Complete the upgrade through **Site administration → Notifications**. No core file edits are needed.
 3. Open **Site administration → Plugins → Local plugins → District staff review** for settings, and **Manage district staff reviews** for districts and annual rosters. Direct dashboard: `/local/districtupdate/index.php`; management: `/local/districtupdate/manage.php`.
 4. Keep **Enable approved AD writes** and **Automatically start annual reviews** off while setting up and checking the roster.
@@ -42,7 +42,7 @@ In **Manage district staff reviews**, add every district before creating a year�
 
 The roster includes **non-deleted, non-suspended Moodle users whose authentication is `ldap`**, excluding site administrators and configured excluded usernames. It does not query AD enabled status when generating the roster. Confirm that your LDAP synchronization correctly reflects which accounts belong in the annual review. Add shared/service accounts to **Excluded usernames** before generating a roster.
 
-Matching uses email domain first and Institution as the company fallback. Conflicting or ambiguous evidence, and users with neither match, go to **Unmatched accounts** for administrator assignment. A shared or ambiguous domain is deliberately not guessed. Creating a roster takes a snapshot; later configuration changes affect future snapshots. New district definitions appear in the next annual roster. Each year can be created only once in this version.
+Matching uses email domain first and Institution as the company fallback. Conflicting or ambiguous evidence, and users with neither match, go to **Unmatched accounts** for administrator assignment. A shared or ambiguous domain is deliberately not guessed. Creating a roster takes a snapshot. Use **Refresh rosters from Moodle** under that year to update untouched draft entries after new users sync or district matching changes. Newly configured districts receive an open review during refresh. Each year can be created only once, but it can be refreshed repeatedly.
 
 ## Annual workflow
 
@@ -56,6 +56,19 @@ Matching uses email domain first and Institution as the company fallback. Confli
 8. Inspect results and the per-action audit. Reopening is allowed only before any processing attempt. Already completed accounts are not processed twice. A failed or interrupted account can be retried only through a fresh preview.
 
 For very large batches, hosting gateway request limits may interrupt the browser response. Processing releases the Moodle session lock and requests unlimited PHP execution time, but host/proxy limits still apply. Inspect the dashboard and audit before retrying; per-review locking prevents overlapping execution. A background job queue is not implemented in this pilot.
+
+## Refresh an existing annual roster
+
+Under the year’s heading in **Manage district staff reviews**, choose **Refresh rosters from Moodle**. A summary reports added users, updated profiles, district reassignments, removed inactive/excluded untouched entries, preserved responses and skipped locked reviews.
+
+- New users are added with **Still Employed** prefilled; newly configured districts are included.
+- Untouched entries get current Moodle name, username, email and Institution values and are rematched using current district rules. Conflicting/unmatched entries remain in the administrator queue.
+- Untouched entries that are no longer eligible active LDAP users in Moodle are removed from the draft, with their former snapshot kept in the administrator audit. AD accounts are not removed or changed.
+- Recorded employment responses, notes, reviewer attribution and administrator district assignments are preserved, including their recorded identity snapshot.
+- Submitted reviews are left unchanged. Reopen a submitted review before refreshing it, provided AD processing has not been attempted. Reviews with any attempted processing are never refreshed, and their users are not duplicated elsewhere in the same annual roster.
+- An incoming user whose destination review is locked is skipped until that review can be reopened. Changed drafts invalidate previously opened forms so a stale save cannot overwrite the refreshed roster. An unchanged refresh does not invalidate the form.
+
+Refresh uses the users **already synced into Moodle**. It does not start an LDAP synchronization, send invitations or execute AD changes. The existing invitation buttons remain separate.
 
 ## AD connection setup
 
@@ -108,7 +121,7 @@ Before production use, test on Moodle 5.1.1 with dedicated AD test accounts:
 7. Deny one delegated permission deliberately on a test account, verify partial results/audit, then repair permissions and retry. Test a nested group case is blocked.
 8. Verify invitations/reminders with test recipients, then turn on your chosen annual schedule.
 
-**Current verification boundary:** PHP lint, schema structure and 34 offline contracts pass. Version 0.1.1 also passed Moodle’s own ZIP validation and XMLDB parser, deployed successfully, and completed installation on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. Browser reviewer workflows, LDAP authorization, mail delivery and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
+**Current verification boundary:** PHP lint, schema structure and 48 offline contracts pass. The plugin passed Moodle’s own ZIP validation and XMLDB parser, and version 0.1.3 deployed and completed its version update on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. The roster-refresh integration check also passed against the real Moodle database: adding users, preserving responses, freezing submitted reviews, reopening, removing inactive untouched entries and repeated refresh were verified inside a transaction, then all fixture data was rolled back. Run `php verification/moodle_refresh.php /path/to/moodle/config.php --test-site` only against a test site to repeat it. Browser reviewer workflows, LDAP authorization, mail delivery and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
 
 ## References
 

@@ -64,6 +64,108 @@ final class service {
    return $cycleid;
   } finally { $lock->release(); }
  }
+ /** Refresh draft rosters from the currently synced Moodle directory; never writes to AD or sends email. */
+ public static function refresh_cycle(int $cycleid): array {
+  global $DB;
+  require_capability('local/districtupdate:manage', \context_system::instance());
+  $annuallock = self::lock('annual'); $locks = [];
+  try {
+   $DB->get_record('local_districtupdate_cycle', ['id' => $cycleid], '*', MUST_EXIST);
+   $reviews = $DB->get_records('local_districtupdate_review', ['cycleid' => $cycleid], 'id');
+   foreach ($reviews as $review) { $locks[] = self::lock('review:'.$review->id); }
+   // Reload after locks: a reviewer or administrator may have submitted while we waited.
+   $DB->get_record('local_districtupdate_cycle', ['id' => $cycleid], '*', MUST_EXIST);
+   $reviews = $DB->get_records('local_districtupdate_review', ['cycleid' => $cycleid], 'id');
+   $districts = $DB->get_records('local_districtupdate_dist', null, 'name');
+   $bydistrict = []; $rows = []; $byuser = []; $frozen = []; $changed = [];
+   $stats = ['added' => 0, 'updated' => 0, 'moved' => 0, 'removed' => 0, 'preserved' => 0, 'skipped' => 0, 'locked' => 0];
+   foreach ($reviews as $review) {
+    $bydistrict[(int)$review->districtid] = $review;
+    $frozen[$review->id] = (bool)$review->submittedat;
+    foreach ($DB->get_records('local_districtupdate_roster', ['reviewid' => $review->id], 'id') as $row) {
+     if (isset($byuser[$row->userid])) { self::fail('A user appears twice in this annual roster. Resolve the duplicate before refreshing.'); }
+     $rows[$row->id] = $row; $byuser[$row->userid] = $row;
+     if ($row->processstate !== 'pending') { $frozen[$review->id] = true; }
+    }
+   }
+   $stats['locked'] = count(array_filter($frozen));
+   $manual = [];
+   foreach ($DB->get_records('local_districtupdate_audit', ['event' => 'district_assigned'], '', 'id, rosterid') as $entry) {
+    $manual[$entry->rosterid] = true;
+   }
+   $active = [];
+   $users = $DB->get_recordset_select('user', 'auth = :auth AND deleted = 0 AND suspended = 0 AND id > 1',
+    ['auth' => 'ldap'], 'id', 'id, username, firstname, lastname, email, institution');
+   try {
+    foreach ($users as $user) {
+     if (!is_siteadmin($user->id) && !self::excluded($user->username)) { $active[$user->id] = $user; }
+    }
+   } finally { $users->close(); }
+   $tx = $DB->start_delegated_transaction();
+   // Districts added after the annual snapshot can now receive an open review, without invitations.
+   foreach (array_merge([0], array_keys($districts)) as $districtid) {
+    if (!isset($bydistrict[$districtid])) {
+     $review = (object)['cycleid' => $cycleid, 'districtid' => $districtid, 'revision' => 1,
+      'submittedby' => 0, 'submittedat' => 0, 'lastsent' => 0];
+     $review->id = $DB->insert_record('local_districtupdate_review', $review);
+     $reviews[$review->id] = $review; $bydistrict[$districtid] = $review; $frozen[$review->id] = false;
+    }
+   }
+   foreach ($rows as $row) {
+    if ($frozen[$row->reviewid]) { continue; }
+    // Keep decisions, notes, attribution and administrator district overrides intact.
+    if ($row->status !== 'still' || trim($row->note) !== '' || $row->modifiedby || isset($manual[$row->id])) {
+     $stats['preserved']++; continue;
+    }
+    if (!isset($active[$row->userid])) {
+     self::audit(0, $row->userid, 'roster_account_removed', ['cycleid' => $cycleid, 'reviewid' => $row->reviewid,
+      'snapshot' => $row, 'reason' => 'No longer an eligible active LDAP user in Moodle']);
+     $DB->delete_records('local_districtupdate_roster', ['id' => $row->id]);
+     $changed[$row->reviewid] = true; $stats['removed']++; continue;
+    }
+    $user = $active[$row->userid];
+    $districtid = rules::district($user->email, $user->institution, $districts);
+    $target = $bydistrict[$districtid];
+    if ($frozen[$target->id]) { $stats['skipped']++; continue; }
+    $update = (object)['id' => $row->id, 'reviewid' => $target->id, 'username' => $user->username,
+     'fullname' => $user->firstname.' '.$user->lastname, 'email' => $user->email, 'institution' => $user->institution];
+    $different = false; $profilechanged = false;
+    foreach (['username', 'fullname', 'email', 'institution'] as $field) {
+     if ($row->$field !== $update->$field) { $different = true; $profilechanged = true; }
+    }
+    if ((int)$row->reviewid !== (int)$target->id) { $different = true; $stats['moved']++; }
+    if ($different) {
+     $DB->update_record('local_districtupdate_roster', $update);
+     self::audit($row->id, $row->userid, 'roster_account_refreshed', ['before' => $row, 'after' => $update]);
+     $changed[$row->reviewid] = true; $changed[$target->id] = true;
+     if ($profilechanged) { $stats['updated']++; }
+    }
+   }
+   foreach ($active as $user) {
+    // One roster entry per user per year, including submitted and already processed entries.
+    if (isset($byuser[$user->id])) { continue; }
+    $districtid = rules::district($user->email, $user->institution, $districts);
+    $target = $bydistrict[$districtid];
+    if ($frozen[$target->id]) { $stats['skipped']++; continue; }
+    $row = (object)['reviewid' => $target->id, 'userid' => $user->id, 'username' => $user->username,
+     'fullname' => $user->firstname.' '.$user->lastname, 'email' => $user->email, 'institution' => $user->institution,
+     'status' => 'still', 'destination' => 0, 'targetcompany' => '', 'note' => '', 'modifiedby' => 0,
+     'modifiedat' => 0, 'processstate' => 'pending'];
+    $row->id = $DB->insert_record('local_districtupdate_roster', $row);
+    self::audit($row->id, $user->id, 'roster_account_added', ['cycleid' => $cycleid, 'reviewid' => $target->id]);
+    $changed[$target->id] = true; $stats['added']++;
+   }
+   foreach (array_keys($changed) as $id) {
+    $DB->set_field('local_districtupdate_review', 'revision', $reviews[$id]->revision + 1, ['id' => $id]);
+   }
+   self::audit(0, 0, 'rosters_refreshed', ['cycleid' => $cycleid, 'summary' => $stats]);
+   $tx->allow_commit();
+   return $stats;
+  } finally {
+   foreach (array_reverse($locks) as $lock) { $lock->release(); }
+   $annuallock->release();
+  }
+ }
  public static function save(int $reviewid, int $revision, array $responses, bool $submit): void {
   global $DB, $USER;
   $lock = self::lock('review:'.$reviewid);

@@ -39,6 +39,9 @@ namespace {
   public function set_field($table, $field, $value, $where) {
    foreach ($this->get_records($table, $where) as $id => $row) { $this->tables[$table][$id]->$field = $value; }
   }
+  public function delete_records($table, $where) {
+   foreach ($this->get_records($table, $where) as $id => $row) { unset($this->tables[$table][$id]); }
+  }
   public function start_delegated_transaction() { return new class { public function allow_commit() {} }; }
   public function record_exists_select($table, $sql, $params) {
    foreach ($this->get_records($table, ['reviewid' => $params['id']]) as $r) { if ($r->processstate !== 'pending') { return true; } } return false;
@@ -104,6 +107,7 @@ namespace {
  test('preview mode never connects to AD and cannot execute', function() { global $DB, $MANAGER; $MANAGER = true; $DB->tables['local_districtupdate_review'][1]->submittedat = time(); $DB->tables['local_districtupdate_roster'][1]->status = 'left'; $b = processor::preview(1, [1]); check($b['rows'][1]['state'] === null); expect_error(fn() => processor::process($b), 'Preview expired'); });
  test('selected account must belong to the submitted review', function() { global $DB, $MANAGER; $MANAGER = true; $DB->tables['local_districtupdate_review'][2]->submittedat = time(); expect_error(fn() => processor::preview(2, [1]), 'Record not found'); });
  test('annual snapshot defaults to Still Employed and excludes service accounts', function() { global $DB; $service = clone $DB->tables['user'][20]; $service->id = 21; $service->username = 'service-account'; $DB->tables['user'][21] = $service; $DB->tables['local_districtupdate_review'] = []; $DB->tables['local_districtupdate_roster'] = []; $cycle = service::create_cycle(2026, time() + DAYSECS); $r = array_values($DB->tables['local_districtupdate_roster']); check(count($r) === 1 && $r[0]->status === 'still'); expect_error(fn() => service::create_cycle(2026, time() + DAYSECS), 'already exists'); });
+ require __DIR__.'/refresh_contract.php';
  require __DIR__.'/directory_contract.php';
  echo "$count checks passed. Stubbed Moodle/AD contracts only; no live server was contacted.\n";
 }
