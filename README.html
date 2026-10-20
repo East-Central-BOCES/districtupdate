@@ -108,7 +108,7 @@ Before production use, test on Moodle 5.1.1 with dedicated AD test accounts:
 7. Deny one delegated permission deliberately on a test account, verify partial results/audit, then repair permissions and retry. Test a nested group case is blocked.
 8. Verify invitations/reminders with test recipients, then turn on your chosen annual schedule.
 
-**Current verification boundary:** PHP lint, schema structure and offline contracts are supplied. A real Moodle installation, browser session, LDAP authorization, mail delivery and downstream sync have not been verified in this development session. This is a pilot package, not a production validation claim.
+**Current verification boundary:** PHP lint, schema structure and 34 offline contracts pass. Version 0.1.1 also passed Moodle’s own ZIP validation and XMLDB parser, deployed successfully, and completed installation on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. Browser reviewer workflows, LDAP authorization, mail delivery and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
 
 ## References
 
