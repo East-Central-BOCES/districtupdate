@@ -1,0 +1,41 @@
+<?php
+// SPDX-License-Identifier: GPL-3.0-or-later
+ defined('MOODLE_INTERNAL') || die();
+if ($hassiteconfig) {
+ $settings = new admin_settingpage('local_districtupdate', get_string('pluginname', 'local_districtupdate'));
+ $ADMIN->add('localplugins', $settings);
+ $ADMIN->add('localplugins', new admin_externalpage('local_districtupdate_manage',
+  'Manage district staff reviews', new moodle_url('/local/districtupdate/manage.php')));
+ $settings->add(new admin_setting_heading('local_districtupdate/setup', 'Start here',
+  'Configure districts and reviewers in Manage district staff reviews. LDAP writes default to off. '
+  . 'Use a dedicated delegated AD account, trusted LDAPS, and full group DNs. See README.html in the plugin.'));
+ $text = [
+  'ldapurl' => ['LDAPS URL', 'Example: ldaps://dc.example.org:636. Certificate validation is required.', ''],
+  'userbase' => ['AD user search base DN', 'Search includes child OUs.', ''],
+  'binddn' => ['AD service account bind DN', 'Delegate only the required group and user attribute permissions.', ''],
+  'membersdn' => ['ECBOCES_Members group DN', 'Full distinguished name, not just the group name.', ''],
+  'zoomdn' => ['Zoom group DN', 'Full distinguished name.', ''],
+  'basicdn' => ['Basic group DN', 'Full distinguished name.', ''],
+ ];
+ foreach ($text as $key => [$label, $help, $default]) {
+  $settings->add(new admin_setting_configtext('local_districtupdate/'.$key, $label, $help, $default, PARAM_RAW_TRIMMED));
+ }
+ $settings->add(new admin_setting_configselect('local_districtupdate/identityattribute', 'AD username attribute',
+  'Must match Moodle LDAP usernames exactly. Email is also checked.', 'samaccountname',
+  ['samaccountname' => 'sAMAccountName', 'userprincipalname' => 'userPrincipalName']));
+ $settings->add(new admin_setting_heading('local_districtupdate/secret', 'AD password',
+  'Set bindpassword through $CFG->forced_plugin_settings in config.php; no password is collected by this page.'));
+ $settings->add(new admin_setting_configcheckbox('local_districtupdate/livewrites', 'Enable approved AD writes',
+  'Off: preview only. On: administrators can preview current AD state and explicitly confirm selected changes.', 0));
+ $settings->add(new admin_setting_configtextarea('local_districtupdate/excluded', 'Excluded usernames',
+  'One exact Moodle username per line. Exclude service and shared accounts. Site admins are always excluded.', '', PARAM_RAW));
+ $settings->add(new admin_setting_configcheckbox('local_districtupdate/automatic', 'Automatically start annual reviews',
+  'Creates this year’s roster on or after the start date and sends invitations. Enable only after pilot approval.', 0));
+ $settings->add(new admin_setting_configselect('local_districtupdate/startmonth', 'Annual start month', '', 8,
+  array_combine(range(1,12), range(1,12))));
+ $settings->add(new admin_setting_configselect('local_districtupdate/startday', 'Annual start day', '', 1,
+  array_combine(range(1,28), range(1,28))));
+ $settings->add(new admin_setting_configtext('local_districtupdate/duedays', 'Days to complete review', '', 30, PARAM_INT));
+ $settings->add(new admin_setting_configtext('local_districtupdate/reminddays', 'Reminder interval in days',
+  'Zero disables reminders. Reminders start only after an invitation has been sent.', 7, PARAM_INT));
+}

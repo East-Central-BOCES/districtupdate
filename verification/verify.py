@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""Offline release checks. This does not install Moodle or connect to AD."""
+from pathlib import Path
+import re
+import subprocess
+import xml.etree.ElementTree as ET
+root = Path(__file__).resolve().parents[1]
+files = sorted(root.rglob('*.php'))
+for path in files:
+    subprocess.run(['php', '-l', str(path)], check=True, capture_output=True, text=True)
+print(f'PHP syntax passed: {len(files)} files', flush=True)
+xml = ET.parse(root / 'db/install.xml').getroot()
+assert xml.attrib['PATH'] == 'local/districtupdate/db'
+expected = {'local_districtupdate_dist', 'local_districtupdate_access', 'local_districtupdate_cycle', 'local_districtupdate_review', 'local_districtupdate_roster', 'local_districtupdate_audit'}
+tables = xml.findall('./TABLES/TABLE')
+assert {t.attrib['NAME'] for t in tables} == expected
+fields = {}
+for table in tables:
+    name = table.attrib['NAME']
+    cols = [f.attrib['NAME'] for f in table.findall('./FIELDS/FIELD')]
+    fields[name] = set(cols)
+    assert len(cols) == len(set(cols)) and cols[0] == 'id'
+    assert table.find('./KEYS/KEY').attrib['TYPE'] == 'primary'
+    for index in table.findall('./INDEXES/INDEX'):
+        assert set(index.attrib['FIELDS'].replace(' ', '').split(',')) <= set(cols)
+assert next(f for t in tables if t.attrib['NAME'] == 'local_districtupdate_roster' for f in t.findall('./FIELDS/FIELD') if f.attrib['NAME'] == 'status').attrib['DEFAULT'] == 'still'
+print('XMLDB structural checks passed: 6 tables', flush=True)
+# Every DB table referenced by plugin source must be declared in install.xml.
+references = set()
+for path in files:
+    if 'verification' not in path.parts:
+        references.update(re.findall(r'local_districtupdate_(?:dist|access|cycle|review|roster|audit)\b', path.read_text()))
+assert references == expected
+assert "$plugin->requires = 2025100601" in (root/'version.php').read_text()
+assert "'livewrites'" in (root/'classes/directory.php').read_text()
+subprocess.run(['php', str(root/'verification/check.php')], check=True)
+print('Offline verification passed. Moodle installation, browser behavior, mail and live AD remain pilot checks.')

@@ -1,0 +1,183 @@
+<?php
+// SPDX-License-Identifier: GPL-3.0-or-later
+namespace local_districtupdate;
+defined('MOODLE_INTERNAL') || die();
+final class service {
+ public static function fail(string $message): never {
+  throw new \moodle_exception('error', 'local_districtupdate', '', $message);
+ }
+ public static function manager(): bool {
+  return has_capability('local/districtupdate:manage', \context_system::instance());
+ }
+ public static function lock(string $key): \core\lock\lock {
+  $lock = \core\lock\lock_config::get_lock_factory('local_districtupdate')->get_lock($key, 10);
+  if (!$lock) { self::fail('Another person is updating this review. Please try again.'); }
+  return $lock;
+ }
+ public static function access(int $reviewid): \stdClass {
+  global $DB, $USER;
+  $review = $DB->get_record('local_districtupdate_review', ['id' => $reviewid], '*', MUST_EXIST);
+  if (!self::manager() && (!$review->districtid || !$DB->record_exists('local_districtupdate_access',
+    ['districtid' => $review->districtid, 'userid' => $USER->id]))) {
+   self::fail('You are not assigned to this district review.');
+  }
+  return $review;
+ }
+ public static function audit(int $rosterid, int $userid, string $event, array $detail = []): void {
+  global $DB, $USER;
+  $DB->insert_record('local_districtupdate_audit', (object)['rosterid' => $rosterid, 'userid' => $userid,
+   'actorid' => $USER->id ?? 0, 'event' => $event, 'detail' => json_encode($detail, JSON_UNESCAPED_UNICODE),
+   'timecreated' => time()]);
+ }
+ public static function excluded(string $username): bool {
+  return in_array(strtolower($username), rules::lines((string)get_config('local_districtupdate', 'excluded')), true);
+ }
+ public static function create_cycle(int $year, int $duedate): int {
+  global $DB;
+  $lock = self::lock('annual');
+  try {
+   if ($year < 2020 || $year > 2100 || $duedate <= time()) { self::fail('Choose a valid year and a future due date.'); }
+   if ($DB->record_exists('local_districtupdate_cycle', ['reviewyear' => $year])) { self::fail('A review already exists for this year.'); }
+   $districts = $DB->get_records('local_districtupdate_dist', null, 'name');
+   if (!$districts) { self::fail('Add districts and reviewers first.'); }
+   $tx = $DB->start_delegated_transaction();
+   $cycleid = $DB->insert_record('local_districtupdate_cycle', (object)['reviewyear' => $year, 'duedate' => $duedate, 'timecreated' => time()]);
+   $reviews = [];
+   foreach (array_merge([0], array_keys($districts)) as $districtid) {
+    $reviews[$districtid] = $DB->insert_record('local_districtupdate_review', (object)['cycleid' => $cycleid,
+     'districtid' => $districtid, 'revision' => 1, 'submittedby' => 0, 'submittedat' => 0, 'lastsent' => 0]);
+   }
+   $users = $DB->get_recordset_select('user', 'auth = :auth AND deleted = 0 AND suspended = 0 AND id > 1',
+    ['auth' => 'ldap'], 'id', 'id, username, firstname, lastname, email, institution');
+   try {
+    foreach ($users as $user) {
+     if (is_siteadmin($user->id) || self::excluded($user->username)) { continue; }
+     $districtid = rules::district($user->email, $user->institution, $districts);
+     $DB->insert_record('local_districtupdate_roster', (object)['reviewid' => $reviews[$districtid], 'userid' => $user->id,
+      'username' => $user->username, 'fullname' => $user->firstname.' '.$user->lastname, 'email' => $user->email,
+      'institution' => $user->institution, 'status' => 'still', 'destination' => 0, 'targetcompany' => '',
+      'note' => '', 'modifiedby' => 0, 'modifiedat' => 0, 'processstate' => 'pending']);
+    }
+   } finally { $users->close(); }
+   self::audit(0, 0, 'cycle_created', ['cycleid' => $cycleid, 'year' => $year]);
+   $tx->allow_commit();
+   return $cycleid;
+  } finally { $lock->release(); }
+ }
+ public static function save(int $reviewid, int $revision, array $responses, bool $submit): void {
+  global $DB, $USER;
+  $lock = self::lock('review:'.$reviewid);
+  try {
+   $review = self::access($reviewid);
+   if ($review->submittedat) { self::fail('This review is already submitted. Ask an administrator to reopen it.'); }
+   if ((int)$review->revision !== $revision) { self::fail('Another reviewer saved changes. Reload the page before editing again.'); }
+   if (!$review->districtid) { self::fail('Assign unmatched accounts to a district before reviewing.'); }
+   $roster = $DB->get_records('local_districtupdate_roster', ['reviewid' => $reviewid], 'fullname');
+   if (count($responses) !== count($roster) || array_diff(array_keys($roster), array_keys($responses))) {
+    self::fail('The roster was incomplete. Reload the page. For large rosters increase PHP max_input_vars.');
+   }
+   $districts = $DB->get_records('local_districtupdate_dist');
+   $changes = [];
+   foreach ($roster as $row) {
+    $input = $responses[$row->id];
+    $status = (string)($input['status'] ?? '');
+    $dest = $status === 'moved' ? (int)($input['destination'] ?? 0) : 0;
+    if (!in_array($status, ['still', 'left', 'moved'], true)
+       || ($status === 'moved' && (!isset($districts[$dest]) || $dest === (int)$review->districtid))) {
+     self::fail('Choose a valid employment status and a different destination district for each transfer.');
+    }
+    $company = $dest ? $districts[$dest]->name : '';
+    $note = trim((string)($input['note'] ?? ''));
+    if (\core_text::strlen($note) > 2000) { self::fail('Notes must be 2,000 characters or fewer.'); }
+    if ($status !== $row->status || $dest !== (int)$row->destination || $note !== $row->note || $company !== $row->targetcompany) {
+     $changes[] = [$row, $status, $dest, $company, $note];
+    }
+   }
+   $tx = $DB->start_delegated_transaction();
+   foreach ($changes as [$row, $status, $dest, $company, $note]) {
+    self::audit($row->id, $row->userid, 'response_changed', ['before' => [$row->status, $row->destination, $row->note],
+     'after' => [$status, $dest, $note]]);
+    $DB->update_record('local_districtupdate_roster', (object)['id' => $row->id, 'status' => $status,
+     'destination' => $dest, 'targetcompany' => $company, 'note' => $note,
+     'modifiedby' => $USER->id, 'modifiedat' => time()]);
+   }
+   $review->revision++;
+   if ($submit) {
+    $review->submittedat = time(); $review->submittedby = $USER->id;
+    self::audit(0, $USER->id, 'review_submitted', ['reviewid' => $reviewid]);
+   }
+   $DB->update_record('local_districtupdate_review', $review);
+   $tx->allow_commit();
+  } finally { $lock->release(); }
+  if ($submit) { self::notify_admins($reviewid); }
+ }
+ public static function notify_admins(int $reviewid): void {
+  global $DB;
+  $review = $DB->get_record('local_districtupdate_review', ['id' => $reviewid], '*', MUST_EXIST);
+  $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
+  $submitter = $DB->get_record('user', ['id' => $review->submittedby], '*', MUST_EXIST);
+  $body = $district->name.' submitted its annual staff review. Submitted by '.fullname($submitter).".\n\n";
+  foreach ($DB->get_records('local_districtupdate_roster', ['reviewid' => $reviewid], 'fullname') as $row) {
+   if ($row->status !== 'still') {
+    $body .= $row->fullname.' <'.$row->email.">\n".implode('; ', rules::actions($row->status, $row->targetcompany))."\n\n";
+   }
+  }
+  $body .= 'Preview and approve: '.(new \moodle_url('/local/districtupdate/approve.php', ['reviewid' => $reviewid]))->out(false);
+  foreach (get_admins() as $admin) {
+   $sent = email_to_user($admin, \core_user::get_noreply_user(), 'District review submitted: '.$district->name, $body);
+   self::audit(0, $admin->id, $sent ? 'admin_email_sent' : 'admin_email_failed', ['reviewid' => $reviewid]);
+  }
+ }
+ public static function invite(int $reviewid): void {
+  global $DB;
+  $review = $DB->get_record('local_districtupdate_review', ['id' => $reviewid], '*', MUST_EXIST);
+  if (!$review->districtid || $review->submittedat) { return; }
+  $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
+  $cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
+  $url = (new \moodle_url('/local/districtupdate/review.php', ['id' => $reviewid]))->out(false);
+  $body = 'Please review the '.$cycle->reviewyear.' staff roster for '.$district->name.'. Due: '.userdate($cycle->duedate)
+   ."\n\nEveryone starts as Still Employed. Change anyone who has left or moved to another ECBOCES district. "
+   ."You must sign into your assigned Moodle account. Save changes or submit the completed review.\n\n".$url;
+  $success = false;
+  foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $review->districtid]) as $assignment) {
+   $user = $DB->get_record('user', ['id' => $assignment->userid, 'deleted' => 0, 'suspended' => 0]);
+   if (!$user) { continue; }
+   $sent = email_to_user($user, \core_user::get_noreply_user(), $cycle->reviewyear.' staff review: '.$district->name, $body);
+   self::audit(0, $user->id, $sent ? 'invitation_sent' : 'invitation_failed', ['reviewid' => $reviewid]);
+   $success = $success || $sent;
+  }
+  if ($success) { $DB->set_field('local_districtupdate_review', 'lastsent', time(), ['id' => $reviewid]); }
+ }
+ public static function reopen(int $reviewid): void {
+  global $DB;
+  $lock = self::lock('review:'.$reviewid);
+  try {
+   $review = self::access($reviewid);
+   if ($DB->record_exists_select('local_districtupdate_roster', "reviewid = :id AND processstate <> 'pending'", ['id' => $reviewid])) {
+    self::fail('Directory processing was attempted. This submitted review cannot be reopened.');
+   }
+   $review->submittedat = 0; $review->submittedby = 0; $review->revision++;
+   $DB->update_record('local_districtupdate_review', $review);
+   self::audit(0, 0, 'review_reopened', ['reviewid' => $reviewid]);
+  } finally { $lock->release(); }
+ }
+ public static function assign(int $rowid, int $districtid): void {
+  global $DB;
+  $row = $DB->get_record('local_districtupdate_roster', ['id' => $rowid], '*', MUST_EXIST);
+  $source = $DB->get_record('local_districtupdate_review', ['id' => $row->reviewid], '*', MUST_EXIST);
+  if ($source->districtid) { self::fail('Only unmatched accounts can be assigned here.'); }
+  $target = $DB->get_record('local_districtupdate_review', ['cycleid' => $source->cycleid, 'districtid' => $districtid], '*', MUST_EXIST);
+  if (!$districtid) { self::fail('Select a district.'); }
+  $lock = self::lock('review:'.$target->id);
+  try {
+   $target = $DB->get_record('local_districtupdate_review', ['id' => $target->id], '*', MUST_EXIST);
+   $row = $DB->get_record('local_districtupdate_roster', ['id' => $rowid], '*', MUST_EXIST);
+   if ($target->submittedat || (int)$row->reviewid !== (int)$source->id) { self::fail('Assignment changed or target review is submitted.'); }
+   $tx = $DB->start_delegated_transaction();
+   $DB->set_field('local_districtupdate_roster', 'reviewid', $target->id, ['id' => $rowid]);
+   $DB->set_field('local_districtupdate_review', 'revision', $target->revision + 1, ['id' => $target->id]);
+   self::audit($rowid, $row->userid, 'district_assigned', ['districtid' => $districtid]);
+   $tx->allow_commit();
+  } finally { $lock->release(); }
+ }
+}

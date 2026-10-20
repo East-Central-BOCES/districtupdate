@@ -1,0 +1,117 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>ECBOCES District Update setup</title><style>body{font:16px/1.5 system-ui;max-width:1000px;margin:2em auto;padding:1em}pre{white-space:pre-wrap}</style><h1>ECBOCES District Update setup</h1><pre># ECBOCES District Update
+
+A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.0.** AD writes and automatic annual invitations default to off.
+
+## What districts see
+
+A signed-in, assigned reviewer sees only their district’s roster. Every account starts as **Still Employed**. Reviewers change exceptions to **No longer employed with an ECBOCES district** or **Moved to another ECBOCES district**. Choosing a transfer reveals a required dropdown of district names. Notes are optional. Multiple assigned people share the same roster, with attribution for changed responses and the final submitter. A stale save is rejected rather than overwriting another person’s work. Submitting freezes the roster; saving progress does not submit it or execute AD changes.
+
+## Approved actions
+
+| AD change | Still employed | No longer employed | Moved to another district |
+|---|---|---|---|
+| ECBOCES_Members | No change | Remove | Retain existing membership |
+| Zoom | No change | Remove | Remove |
+| Basic | No change | Add | Add |
+| Office (`physicalDeliveryOfficeName`) | No change | `No Access` | `No Access` |
+| Company (`company`) | No change | No change | Exact selected district name |
+
+Company is changed in AD. Your existing LDAP mapping and sync carries it into Moodle Institution. The plugin does not delete, disable or suspend AD accounts and does not change Moodle authentication configuration.
+
+## Install
+
+1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.0.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
+2. Complete the upgrade through **Site administration → Notifications**. No core file edits are needed.
+3. Open **Site administration → Plugins → Local plugins → District staff review** for settings, and **Manage district staff reviews** for districts and annual rosters. Direct dashboard: `/local/districtupdate/index.php`; management: `/local/districtupdate/manage.php`.
+4. Keep **Enable approved AD writes** and **Automatically start annual reviews** off while setting up and checking the roster.
+
+The installer creates six plugin tables. The ZIP contains one `districtupdate/` directory. The repository root is the plugin source; do not install the parent folder name `districtupdate-main` as the Moodle plugin directory.
+
+## Configure districts and reviewers
+
+In **Manage district staff reviews**, add every district before creating a year’s roster:
+
+- **Exact district name:** the name to write into AD Company for transfers (maximum 64 characters).
+- **Email domains:** one domain per line, without `@`.
+- **Institution aliases:** other existing Company/Institution values identifying this district. The district name itself already matches. Matching ignores case and surrounding whitespace. Shared domains should be left off both district mappings so Institution can distinguish them.
+- **Assigned Moodle usernames:** one or more active, non-guest Moodle usernames, one per line. These people can use the same review link, but must each log into their own assigned account. Forwarding the URL does not grant another person access. Assignment changes take effect immediately for future requests.
+
+The roster includes **non-deleted, non-suspended Moodle users whose authentication is `ldap`**, excluding site administrators and configured excluded usernames. It does not query AD enabled status when generating the roster. Confirm that your LDAP synchronization correctly reflects which accounts belong in the annual review. Add shared/service accounts to **Excluded usernames** before generating a roster.
+
+Matching uses email domain first and Institution as the company fallback. Conflicting or ambiguous evidence, and users with neither match, go to **Unmatched accounts** for administrator assignment. A shared or ambiguous domain is deliberately not guessed. Creating a roster takes a snapshot; later configuration changes affect future snapshots. New district definitions appear in the next annual roster. Each year can be created only once in this version.
+
+## Annual workflow
+
+1. Enter review year and due date and choose **Create annual roster**.
+2. Resolve unmatched accounts and inspect each district roster. No email is sent just by creating a roster manually.
+3. Choose **Send invitations to all outstanding districts**, or send a district’s review link individually. All assigned reviewers receive the same district link. Notifications and delivery failures are logged.
+4. Reviewers save progress and then choose **Submit completed review**. A completed review may leave every account as Still Employed, as requested. They are explicitly confirming the entire roster.
+5. Site administrators receive an email summary listing proposed actions and a link to the approval page. The administration dashboard remains the authoritative source even if email delivery fails.
+6. Under **Preview / process / audit**, changed accounts are checked by default. Uncheck exceptions or select an individual account, then choose **Preview selected accounts**.
+7. With AD writes enabled, the preview checks live AD identity and state. Blocked accounts are identified and skipped. Choose **Confirm and process these accounts** to execute the approved subset. Preview mode shows proposed actions without an AD connection or an execute control.
+8. Inspect results and the per-action audit. Reopening is allowed only before any processing attempt. Already completed accounts are not processed twice. A failed or interrupted account can be retried only through a fresh preview.
+
+For very large batches, hosting gateway request limits may interrupt the browser response. Processing releases the Moodle session lock and requests unlimited PHP execution time, but host/proxy limits still apply. Inspect the dashboard and audit before retrying; per-review locking prevents overlapping execution. A background job queue is not implemented in this pilot.
+
+## AD connection setup
+
+The Moodle web server needs PHP’s LDAP extension, network access to the domain controller over LDAPS, and trust in the issuing certificate authority. **Certificate verification is required.** Use one `ldaps://hostname:636` URL without a trailing path.
+
+Configure:
+
+- LDAPS server URL.
+- User search base DN, including relevant child OUs.
+- A dedicated delegated service account bind DN.
+- The full distinguished names of the **ECBOCES_Members**, **Zoom**, and **Basic** groups. Group names alone are not sufficient.
+- The AD identity attribute that exactly matches Moodle usernames: `sAMAccountName` by default, or `userPrincipalName`.
+- The bind password through `$CFG-&gt;forced_plugin_settings[&#x27;local_districtupdate&#x27;][&#x27;bindpassword&#x27;]` in the real Moodle `config.php`, before it loads `lib/setup.php`. See `config.example.php`. Do not put real credentials into this repository.
+
+Delegate read access for identity/group verification and write access only to **membership of the three named groups** and users’ **Company and Office attributes** in the relevant OUs. Do not use Domain Admin credentials. Existing Moodle LDAP credentials may be read-only; the plugin uses its own explicitly configured account.
+
+Choose **Test LDAPS connection and group DNs** before enabling writes. This tests the bind and identifies the groups without changing accounts; it does not prove write permissions or account matching. Then enable writes only on the staging pilot and validate a small approved test batch.
+
+At preview and again before processing, the plugin checks exact username and email matching, object GUID and current state. It refuses protected accounts and conflicting Company values. Object GUID is first pinned at the live preview, not at the annual snapshot; review reused usernames/email addresses manually. Inherited or primary group paths that prevent removing the requested membership are blocked before changes. This pilot assumes a single AD domain and same-domain groups.
+
+AD changes span multiple directory entries and cannot be made into one atomic transaction. The plugin records the initial state and each attempted/successful/failed action. Earlier successful actions remain applied after a later failure. Retrying rechecks the current state and does not add duplicate memberships. Office and Company are replaced together in a single user-entry request for transfers. Post-change verification confirms the intended result before an account is marked complete. Existing AD/Moodle sync and any license provisioning must be tested end to end; an LDAP write alone does not prove the downstream effect.
+
+## Annual scheduling and reminders
+
+Moodle cron runs the task **Create annual district reviews and remind outstanding reviewers** daily. Moodle cron itself must already be working.
+
+- **Automatically start annual reviews** is off by default. When enabled, this year’s roster is generated on or after the configured month/day, with a deadline based on **Days to complete review**, and invitations are sent automatically. Enabling it after the configured date starts this year’s cycle on the next task run.
+- The default suggested start is August 1, with 30 days to complete; change these to your actual schedule before enabling automation.
+- Reminder interval defaults to seven days; zero disables reminders. Reminders apply to invited, unsubmitted reviews for the current year, including manually invited reviews. Submitted districts stop receiving reminders.
+- Dates follow the Moodle site timezone. Set it to **America/Denver** if that is your intended schedule.
+
+## Access and data
+
+Site administrators manage the plugin by default. A delegated role can be granted `local/districtupdate:manage` in system context; this is a sensitive permission that can approve directory changes. Ordinary reviewers receive access through district assignments, without a site administration role. The plugin includes Moodle Privacy API metadata, export, and local-data deletion support. Privacy deletion does not change AD.
+
+Review forms contain three inputs per staff member. For large districts, configure PHP `max_input_vars` above `3 × largest district roster + 20` (for example 5,000). Incomplete forms are rejected rather than silently interpreted as a completed review.
+
+## Verification and pilot acceptance
+
+Run `python3 verification/verify.py` for PHP syntax checks, XMLDB structural checks and executable workflow/AD adapter contracts. These tests use in-memory Moodle data and simulated LDAP functions; they do not contact a real Moodle instance or AD server.
+
+Before production use, test on Moodle 5.1.1 with dedicated AD test accounts:
+
+1. Complete installation and open settings, dashboard, management, review and approval pages.
+2. Check two assigned reviewers can share a district roster; a stale save is rejected. An unrelated logged-in user and a logged-out visitor cannot retrieve its roster or submit changes, including by changing IDs.
+3. Check one unchanged user, one departure and one transfer. Confirm the default status, destination dropdown, signed-in submitter, admin email, selections/exclusions, and preview mode.
+4. Preview current AD state, process only the departure, and inspect ECBOCES_Members, Zoom, Basic, Office and unchanged Company directly in AD.
+5. Process the transfer and inspect retained ECBOCES_Members, removed Zoom, added Basic, Office `No Access` and exact new Company.
+6. Run your existing sync and confirm Moodle Institution reflects Company. Confirm any Zoom license/group provisioning behaves as intended.
+7. Deny one delegated permission deliberately on a test account, verify partial results/audit, then repair permissions and retry. Test a nested group case is blocked.
+8. Verify invitations/reminders with test recipients, then turn on your chosen annual schedule.
+
+**Current verification boundary:** PHP lint, schema structure and offline contracts are supplied. A real Moodle installation, browser session, LDAP authorization, mail delivery and downstream sync have not been verified in this development session. This is a pilot package, not a production validation claim.
+
+## References
+
+- [Moodle 5.1 local plugins](https://moodledev.io/docs/5.1/apis/plugintypes/local)
+- [Moodle 5.1 tasks](https://moodledev.io/docs/5.1/apis/subsystems/task)
+- [Moodle 5.1 Privacy API](https://moodledev.io/docs/5.1/apis/subsystems/privacy)
+- [Microsoft Office attribute](https://learn.microsoft.com/en-us/windows/win32/adschema/a-physicaldeliveryofficename)
+
+Licensed under GPL-3.0-or-later. See COPYING.txt.
+</pre></html>

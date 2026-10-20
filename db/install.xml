@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/districtupdate/db" VERSION="20261020" COMMENT="Annual district staff review tables">
+  <TABLES>
+    <TABLE NAME="local_districtupdate_dist" COMMENT="District review district">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="name" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" DEFAULT="" />
+        <FIELD NAME="domains" TYPE="text" NOTNULL="true" SEQUENCE="false" />
+        <FIELD NAME="aliases" TYPE="text" NOTNULL="true" SEQUENCE="false" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="districtname" UNIQUE="true" FIELDS="name" />
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_districtupdate_access" COMMENT="District review access">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="districtid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="districtuser" UNIQUE="true" FIELDS="districtid, userid" />
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_districtupdate_cycle" COMMENT="District review cycle">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="reviewyear" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="4" />
+        <FIELD NAME="duedate" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="timecreated" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="reviewyear" UNIQUE="true" FIELDS="reviewyear" />
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_districtupdate_review" COMMENT="District review review">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="cycleid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="districtid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="revision" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="1" />
+        <FIELD NAME="submittedby" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="submittedat" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="lastsent" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cycledistrict" UNIQUE="true" FIELDS="cycleid, districtid" />
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_districtupdate_roster" COMMENT="District review roster">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="reviewid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="username" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="100" DEFAULT="" />
+        <FIELD NAME="fullname" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" DEFAULT="" />
+        <FIELD NAME="email" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="100" DEFAULT="" />
+        <FIELD NAME="institution" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" DEFAULT="" />
+        <FIELD NAME="status" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="12" DEFAULT="still" />
+        <FIELD NAME="destination" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="targetcompany" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="255" DEFAULT="" />
+        <FIELD NAME="note" TYPE="text" NOTNULL="true" SEQUENCE="false" />
+        <FIELD NAME="modifiedby" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="modifiedat" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="processstate" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="16" DEFAULT="pending" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="reviewuser" UNIQUE="true" FIELDS="reviewid, userid" />
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid" />
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_districtupdate_audit" COMMENT="District review audit">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="rosterid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="actorid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="event" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="50" DEFAULT="" />
+        <FIELD NAME="detail" TYPE="text" NOTNULL="true" SEQUENCE="false" />
+        <FIELD NAME="timecreated" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="rosterid" UNIQUE="false" FIELDS="rosterid" />
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid" />
+        <INDEX NAME="actorid" UNIQUE="false" FIELDS="actorid" />
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

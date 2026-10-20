@@ -1,0 +1,6 @@
+# Never store environment secrets, generated ZIPs or runtime data.
+/config.php
+*.zip
+/vendor/
+.phpunit.result.cache
+.DS_Store
