@@ -11,6 +11,8 @@ for path in files:
 print(f'PHP syntax passed: {len(files)} files', flush=True)
 xml = ET.parse(root / 'db/install.xml').getroot()
 assert xml.attrib['PATH'] == 'local/districtupdate/db'
+assert (root/'lang/en/local_districtupdate.php').is_file()
+assert not (root/'lang/en/local_districtreview.php').exists()
 expected = {'local_districtupdate_dist', 'local_districtupdate_access', 'local_districtupdate_cycle', 'local_districtupdate_review', 'local_districtupdate_roster', 'local_districtupdate_audit'}
 tables = xml.findall('./TABLES/TABLE')
 assert {t.attrib['NAME'] for t in tables} == expected
