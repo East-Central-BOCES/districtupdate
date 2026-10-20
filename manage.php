@@ -79,17 +79,22 @@ if ($edit) {
   $u = $DB->get_record('user', ['id' => $a->userid]); if ($u) { $reviewers[] = $u->username; }
  }
 }
-echo $OUTPUT->heading($edit ? 'Edit district' : 'Add district', 4);
+echo $OUTPUT->heading($edit ? 'Edit district' : 'Add one district', 4);
+echo html_writer::tag('p', $edit
+ ? 'Update this district’s details below. In the larger boxes, press Enter to start a new line.'
+ : 'Add one district at a time. Enter its details and reviewers, then choose Save district and add another. '
+   .'In the larger boxes, press Enter to start a new line.');
 echo local_districtupdate_formstart($url).local_districtupdate_hidden('districtid', $edit);
-echo html_writer::tag('label', 'Exact district name for AD Company', ['for' => 'district-name'])
+echo html_writer::tag('label', 'District name — one district (exact AD Company name)', ['for' => 'district-name'])
  .local_districtupdate_input('name', $d->name, 'text', ['id' => 'district-name', 'required' => 'required', 'maxlength' => 64]);
-foreach (['domains' => 'Email domains, one per line (without @)', 'aliases' => 'Other matching Moodle Institution values, one per line',
+foreach (['domains' => 'Email domains, one per line (without @)', 'aliases' => 'Other Institution names for this same district, one per line',
  'reviewers' => 'Assigned Moodle usernames, one per line'] as $key => $label) {
  echo html_writer::tag('label', s($label), ['for' => 'district-'.$key]);
  echo html_writer::tag('textarea', s($key === 'reviewers' ? implode("\n", $reviewers) : $d->$key),
-  ['name' => $key, 'id' => 'district-'.$key, 'rows' => 3, 'class' => 'form-control']);
+  ['name' => $key, 'id' => 'district-'.$key, 'rows' => 4, 'class' => 'form-control', 'style' => 'min-height: 7rem; resize: vertical']);
 }
-echo local_districtupdate_button('Save district and reviewer assignments', 'action', 'district').'</form>';
+echo local_districtupdate_button($edit ? 'Save district changes' : 'Save district and add another', 'action', 'district').'</form>';
+$PAGE->requires->js_init_code("document.getElementById('district-name').addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); document.getElementById('district-domains').focus(); } });");
 echo $OUTPUT->heading('Start an annual review', 3);
 echo local_districtupdate_formstart($url);
 echo '<label>Review year '.local_districtupdate_input('year', userdate(time(), '%Y'), 'number', ['min' => 2020, 'max' => 2100, 'required' => 'required']).'</label> ';
