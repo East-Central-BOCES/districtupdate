@@ -8,3 +8,5 @@ $string['error'] = '{$a}';
 $string['privacy:metadata'] = 'Annual staff rosters, district reviewer assignments, submitted employment decisions and directory action audit records.';
 $string['privacy:field'] = 'Identity, employment response, reviewer attribution or processing audit data.';
 $string['privacy:ldap'] = 'Approved Company, Office and group membership changes are sent to Active Directory.';
+
+$string['cleanuptaskname'] = 'Delete expired district-update audit entries';

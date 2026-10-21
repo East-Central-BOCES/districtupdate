@@ -1,6 +1,6 @@
 # ECBOCES District Update
 
-A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.3.** AD writes and automatic annual invitations default to off.
+A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.4.** AD writes and automatic annual invitations default to off.
 
 ## What districts see
 
@@ -20,7 +20,7 @@ Company is changed in AD. Your existing LDAP mapping and sync carries it into Mo
 
 ## Install
 
-1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.3.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
+1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.4.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
 2. Complete the upgrade through **Site administration → Notifications**. No core file edits are needed.
 3. Open **Site administration → Plugins → Local plugins → District staff review** for settings, and **Manage district staff reviews** for districts and annual rosters. Direct dashboard: `/local/districtupdate/index.php`; management: `/local/districtupdate/manage.php`.
 4. Keep **Enable approved AD writes** and **Automatically start annual reviews** off while setting up and checking the roster.
@@ -56,6 +56,14 @@ Matching uses email domain first and Institution as the company fallback. Confli
 8. Inspect results and the per-action audit. Reopening is allowed only before any processing attempt. Already completed accounts are not processed twice. A failed or interrupted account can be retried only through a fresh preview.
 
 For very large batches, hosting gateway request limits may interrupt the browser response. Processing releases the Moodle session lock and requests unlimited PHP execution time, but host/proxy limits still apply. Inspect the dashboard and audit before retrying; per-review locking prevents overlapping execution. A background job queue is not implemented in this pilot.
+
+## Audit log retention
+
+Audit entries are retained for **30 days** by default. The enabled daily task **Delete expired district-update audit entries** removes entries strictly older than the retention cutoff; entries exactly 30 days old remain until a subsequent run. Cleanup is scheduled for approximately 03:00 in the Moodle site timezone and depends on Moodle cron running. It runs independently of the annual-invitation automation setting. Adjust **Audit log retention** in plugin settings if needed.
+
+Cleanup deletes only this plugin’s audit entries. Annual rosters, district responses, submitter attribution, manual district assignments and processing state remain intact. Existing manual assignments are migrated into durable roster state before cleanup is enabled, so they survive audit expiration. The audit time column is indexed for cleanup. Moodle’s own task execution logs use Moodle’s separate retention rules.
+
+The management page displays up to 100 general audit entries and the approval page up to 200 per-review audit entries. Both show the retention period. Expiration removes individual action details and old snapshots stored in the audit history; the current roster and outcome status remain.
 
 ## Refresh an existing annual roster
 
@@ -121,7 +129,7 @@ Before production use, test on Moodle 5.1.1 with dedicated AD test accounts:
 7. Deny one delegated permission deliberately on a test account, verify partial results/audit, then repair permissions and retry. Test a nested group case is blocked.
 8. Verify invitations/reminders with test recipients, then turn on your chosen annual schedule.
 
-**Current verification boundary:** PHP lint, schema structure and 48 offline contracts pass. The plugin passed Moodle’s own ZIP validation and XMLDB parser, and version 0.1.3 deployed and completed its version update on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. The roster-refresh integration check also passed against the real Moodle database: adding users, preserving responses, freezing submitted reviews, reopening, removing inactive untouched entries and repeated refresh were verified inside a transaction, then all fixture data was rolled back. Run `php verification/moodle_refresh.php /path/to/moodle/config.php --test-site` only against a test site to repeat it. Browser reviewer workflows, LDAP authorization, mail delivery and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
+**Current verification boundary:** PHP lint, schema structure and 54 offline contracts pass. The plugin passed Moodle’s own ZIP validation and XMLDB parser, and version 0.1.4 deployed and completed its version update on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. The roster-refresh integration check also passed against the real Moodle database: adding users, preserving responses, freezing submitted reviews, reopening, removing inactive untouched entries and repeated refresh were verified inside a transaction, then all fixture data was rolled back. The real-database retention check also verified the exact 30-day cutoff and that manual assignments survive deletion of their audit records. Run `php verification/moodle_refresh.php /path/to/moodle/config.php --test-site` only against a test site to repeat it. Browser reviewer workflows, LDAP authorization, mail delivery and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
 
 ## References
 

@@ -69,7 +69,7 @@ test('refresh includes newly configured districts and reassigns untouched accoun
 });
 test('administrator district overrides survive refresh', function() {
  global $MANAGER, $DB; $MANAGER = true;
- $DB->insert_record('local_districtupdate_audit', (object)['rosterid' => 1, 'event' => 'district_assigned']);
+ $DB->tables['local_districtupdate_roster'][1]->manualassignment = 1;
  $DB->tables['user'][20]->email = 'unknown@unknown.org'; $DB->tables['user'][20]->institution = '';
  $s = service::refresh_cycle(1); check($s['preserved'] === 1 && $s['moved'] === 0);
  check((int)$DB->tables['local_districtupdate_roster'][1]->reviewid === 1);

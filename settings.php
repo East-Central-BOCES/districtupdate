@@ -29,6 +29,10 @@ if ($hassiteconfig) {
   'Off: preview only. On: administrators can preview current AD state and explicitly confirm selected changes.', 0));
  $settings->add(new admin_setting_configtextarea('local_districtupdate/excluded', 'Excluded usernames',
   'One exact Moodle username per line. Exclude service and shared accounts. Site admins are always excluded.', '', PARAM_RAW));
+ $settings->add(new admin_setting_configselect('local_districtupdate/auditretentiondays', 'Audit log retention',
+  'Audit entries older than this period are deleted by the daily cleanup task. Rosters, responses, manual assignments '
+  .'and processing status are retained. Moodle cron must be running.', 30,
+  [7 => '7 days', 14 => '14 days', 30 => '30 days', 60 => '60 days', 90 => '90 days', 180 => '180 days', 365 => '365 days']));
  $settings->add(new admin_setting_configcheckbox('local_districtupdate/automatic', 'Automatically start annual reviews',
   'Creates this year’s roster on or after the start date and sends invitations. Enable only after pilot approval.', 0));
  $settings->add(new admin_setting_configselect('local_districtupdate/startmonth', 'Annual start month', '', 8,

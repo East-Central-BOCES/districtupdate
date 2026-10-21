@@ -145,6 +145,7 @@ foreach ($DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC')
  }
 }
 echo $OUTPUT->heading('Recent notification and configuration audit', 3);
+echo html_writer::tag('p', 'Audit entries expire after '.\local_districtupdate\audit_retention::days().' days and are removed by Moodle’s daily cleanup task. Rosters and review responses are retained.');
 $rows = [];
 foreach ($DB->get_records('local_districtupdate_audit', ['rosterid' => 0], 'id DESC', '*', 0, 100) as $log) {
  $actor = $log->actorid ? $DB->get_record('user', ['id' => $log->actorid]) : null;

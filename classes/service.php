@@ -89,10 +89,6 @@ final class service {
     }
    }
    $stats['locked'] = count(array_filter($frozen));
-   $manual = [];
-   foreach ($DB->get_records('local_districtupdate_audit', ['event' => 'district_assigned'], '', 'id, rosterid') as $entry) {
-    $manual[$entry->rosterid] = true;
-   }
    $active = [];
    $users = $DB->get_recordset_select('user', 'auth = :auth AND deleted = 0 AND suspended = 0 AND id > 1',
     ['auth' => 'ldap'], 'id', 'id, username, firstname, lastname, email, institution');
@@ -114,7 +110,7 @@ final class service {
    foreach ($rows as $row) {
     if ($frozen[$row->reviewid]) { continue; }
     // Keep decisions, notes, attribution and administrator district overrides intact.
-    if ($row->status !== 'still' || trim($row->note) !== '' || $row->modifiedby || isset($manual[$row->id])) {
+    if ($row->status !== 'still' || trim($row->note) !== '' || $row->modifiedby || !empty($row->manualassignment)) {
      $stats['preserved']++; continue;
     }
     if (!isset($active[$row->userid])) {
@@ -277,6 +273,7 @@ final class service {
    if ($target->submittedat || (int)$row->reviewid !== (int)$source->id) { self::fail('Assignment changed or target review is submitted.'); }
    $tx = $DB->start_delegated_transaction();
    $DB->set_field('local_districtupdate_roster', 'reviewid', $target->id, ['id' => $rowid]);
+   $DB->set_field('local_districtupdate_roster', 'manualassignment', 1, ['id' => $rowid]);
    $DB->set_field('local_districtupdate_review', 'revision', $target->revision + 1, ['id' => $target->id]);
    self::audit($rowid, $row->userid, 'district_assigned', ['districtid' => $districtid]);
    $tx->allow_commit();

@@ -20,7 +20,7 @@ final class provider implements \core_privacy\local\metadata\provider,
   $fields = [
    'local_districtupdate_access' => ['districtid','userid'],
    'local_districtupdate_review' => ['cycleid','districtid','submittedby','submittedat','lastsent'],
-   'local_districtupdate_roster' => ['reviewid','userid','username','fullname','email','institution','status','destination','targetcompany','note','modifiedby','modifiedat','processstate'],
+   'local_districtupdate_roster' => ['reviewid','userid','username','fullname','email','institution','status','destination','targetcompany','note','modifiedby','modifiedat','processstate','manualassignment'],
    'local_districtupdate_audit' => ['rosterid','userid','actorid','event','detail','timecreated'],
   ];
   foreach ($fields as $table => $names) { $collection->add_database_table($table, array_fill_keys($names, 'privacy:field'), 'privacy:metadata'); }

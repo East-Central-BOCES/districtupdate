@@ -75,6 +75,7 @@
         <FIELD NAME="modifiedby" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
         <FIELD NAME="modifiedat" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
         <FIELD NAME="processstate" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="16" DEFAULT="pending" />
+        <FIELD NAME="manualassignment" TYPE="int" LENGTH="1" NOTNULL="true" SEQUENCE="false" DEFAULT="0" />
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id" />
@@ -101,6 +102,7 @@
         <INDEX NAME="rosterid" UNIQUE="false" FIELDS="rosterid" />
         <INDEX NAME="userid" UNIQUE="false" FIELDS="userid" />
         <INDEX NAME="actorid" UNIQUE="false" FIELDS="actorid" />
+        <INDEX NAME="timecreated" UNIQUE="false" FIELDS="timecreated" />
       </INDEXES>
     </TABLE>
   </TABLES>

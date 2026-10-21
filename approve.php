@@ -77,6 +77,7 @@ if ($batch) {
  echo local_districtupdate_button('Preview selected accounts', 'action', 'preview').'</form>';
 }
 echo $OUTPUT->heading('Review audit — latest 200 entries', 3);
+echo html_writer::tag('p', 'Audit entries expire after '.\local_districtupdate\audit_retention::days().' days. Review responses and processing status are retained.');
 $logs = $DB->get_records_sql('SELECT a.* FROM {local_districtupdate_audit} a JOIN {local_districtupdate_roster} r ON r.id = a.rosterid
  WHERE r.reviewid = :reviewid ORDER BY a.id DESC', ['reviewid' => $reviewid], 0, 200);
 $rows = [];

@@ -56,6 +56,25 @@ try {
  $s = \local_districtupdate\service::refresh_cycle($cycleid);
  du_assert($s['added'] === 0 && $s['updated'] === 0 && $s['moved'] === 0 && $s['removed'] === 0, 'Repeated refresh changed unchanged rows.');
  echo "PASS: inactive untouched removal and repeat refresh work in real DB.\n";
+ $secondrow = $DB->get_record('local_districtupdate_roster', ['reviewid' => $reviewid, 'userid' => $secondid], '*', MUST_EXIST);
+ $DB->set_field('local_districtupdate_roster', 'manualassignment', 1, ['id' => $secondrow->id]);
+ $DB->set_field('user', 'email', 'changed@unmatched.invalid', ['id' => $secondid]);
+ $DB->set_field('user', 'institution', '', ['id' => $secondid]);
+ $now = time(); $cutoff = $now - 30 * DAYSECS;
+ $log = (object)['rosterid' => $secondrow->id, 'userid' => $secondid, 'actorid' => get_admin()->id,
+  'event' => 'district_assigned', 'detail' => '{}', 'timecreated' => $cutoff - 1];
+ $expiredid = $DB->insert_record('local_districtupdate_audit', $log);
+ $log->event = 'retention_boundary'; $log->timecreated = $cutoff;
+ $boundaryid = $DB->insert_record('local_districtupdate_audit', $log);
+ $beforepurge = $DB->get_record('local_districtupdate_roster', ['id' => $secondrow->id], '*', MUST_EXIST);
+ \local_districtupdate\audit_retention::purge($now);
+ du_assert(!$DB->record_exists('local_districtupdate_audit', ['id' => $expiredid]), 'Expired log remained.');
+ du_assert($DB->record_exists('local_districtupdate_audit', ['id' => $boundaryid]), 'Exact cutoff log was deleted.');
+ du_assert(serialize($beforepurge) === serialize($DB->get_record('local_districtupdate_roster', ['id' => $secondrow->id])), 'Cleanup changed roster state.');
+ \local_districtupdate\service::refresh_cycle($cycleid);
+ $afterrefresh = $DB->get_record('local_districtupdate_roster', ['id' => $secondrow->id], '*', MUST_EXIST);
+ du_assert((int)$afterrefresh->reviewid === (int)$reviewid && (int)$afterrefresh->manualassignment === 1, 'Expired log affected manual assignment.');
+ echo "PASS: real DB cleanup respects the 30-day boundary and preserves manual assignments and roster state.\n";
 } catch (Throwable $e) { $failure = $e; }
 try { $tx->rollback(new districtupdate_test_rollback()); } catch (districtupdate_test_rollback $expected) {}
 if ($failure) { throw $failure; }
