@@ -77,7 +77,7 @@ foreach ($districts as $d) {
   html_writer::link(new moodle_url($url, ['edit' => $d->id]), 'Edit')];
 }
 echo $OUTPUT->heading('Districts and reviewers', 3);
-echo local_districtupdate_table(['District / AD Company', 'Email domains', 'Institution aliases', 'Reviewers', ''], $rows);
+echo local_districtupdate_table(['District / AD Company', 'Email domains', 'Institution / District aliases', 'Reviewers', ''], $rows);
 $edit = optional_param('edit', 0, PARAM_INT);
 $d = $edit ? $DB->get_record('local_districtupdate_dist', ['id' => $edit], '*', MUST_EXIST) : (object)['name' => '', 'domains' => '', 'aliases' => ''];
 $reviewers = [];
@@ -94,7 +94,7 @@ echo html_writer::tag('p', $edit
 echo local_districtupdate_formstart($url).local_districtupdate_hidden('districtid', $edit);
 echo html_writer::tag('label', 'District name — one district (exact AD Company name)', ['for' => 'district-name'])
  .local_districtupdate_input('name', $d->name, 'text', ['id' => 'district-name', 'required' => 'required', 'maxlength' => 64]);
-foreach (['domains' => 'Email domains, one per line (without @)', 'aliases' => 'Other Institution names for this same district, one per line',
+foreach (['domains' => 'Email domains, one per line (without @)', 'aliases' => 'Other Institution or District profile names for this same district, one per line',
  'reviewers' => 'Assigned Moodle usernames, one per line'] as $key => $label) {
  echo html_writer::tag('label', s($label), ['for' => 'district-'.$key]);
  echo html_writer::tag('textarea', s($key === 'reviewers' ? implode("\n", $reviewers) : $d->$key),

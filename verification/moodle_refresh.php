@@ -11,7 +11,7 @@ core\session\manager::set_user(get_admin());
 $CFG->forced_plugin_settings['local_districtupdate']['authmethods'] = 'ldap,ldapdistrict';
 class districtupdate_test_rollback extends Exception {}
 function du_assert(bool $ok, string $message): void { if (!$ok) { throw new RuntimeException($message); } }
-$tables = ['user','local_districtupdate_dist','local_districtupdate_cycle','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit'];
+$tables = ['user','user_info_category','user_info_field','user_info_data','local_districtupdate_dist','local_districtupdate_cycle','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit'];
 $before = [];
 foreach ($tables as $table) { $before[$table] = $DB->count_records($table); }
 $tx = $DB->start_delegated_transaction(); $failure = null;
@@ -77,6 +77,27 @@ try {
  $afterrefresh = $DB->get_record('local_districtupdate_roster', ['id' => $secondrow->id], '*', MUST_EXIST);
  du_assert((int)$afterrefresh->reviewid === (int)$reviewid && (int)$afterrefresh->manualassignment === 1, 'Expired log affected manual assignment.');
  echo "PASS: real DB cleanup respects the 30-day boundary and preserves manual assignments and roster state.\n";
+ $categoryid = $DB->insert_record('user_info_category', (object)['name' => 'District test '.$tag, 'sortorder' => 999]);
+ $shortname = 'district_test_'.$tag;
+ $fieldid = $DB->insert_record('user_info_field', (object)['shortname' => $shortname, 'name' => 'District',
+  'datatype' => 'text', 'description' => '', 'descriptionformat' => FORMAT_PLAIN, 'categoryid' => $categoryid,
+  'sortorder' => 999, 'required' => 0, 'locked' => 1, 'visible' => 0, 'forceunique' => 0, 'signup' => 0,
+  'defaultdata' => '', 'defaultdataformat' => FORMAT_PLAIN, 'param1' => '30', 'param2' => '255',
+  'param3' => '0', 'param4' => '', 'param5' => '']);
+ $CFG->forced_plugin_settings['local_districtupdate']['districtprofilefield'] = $shortname;
+ $user->username = 'du-profile-'.$tag; $user->email = 'du-profile@unknown.invalid'; $user->institution = '';
+ $profileuserid = $DB->insert_record('user', $user);
+ $dataid = $DB->insert_record('user_info_data', (object)['userid' => $profileuserid, 'fieldid' => $fieldid,
+  'data' => $districtname, 'dataformat' => FORMAT_PLAIN]);
+ \local_districtupdate\service::refresh_cycle($cycleid);
+ $profilerow = $DB->get_record('local_districtupdate_roster', ['userid' => $profileuserid, 'reviewid' => $reviewid], '*', MUST_EXIST);
+ du_assert($profilerow->institution === '', 'Custom District was copied over Institution.');
+ $DB->set_field('user_info_data', 'data', 'Unknown district', ['id' => $dataid]);
+ \local_districtupdate\service::refresh_cycle($cycleid);
+ $profilerow = $DB->get_record('local_districtupdate_roster', ['id' => $profilerow->id], '*', MUST_EXIST);
+ $unmatched = $DB->get_record('local_districtupdate_review', ['id' => $profilerow->reviewid], '*', MUST_EXIST);
+ du_assert((int)$unmatched->districtid === 0, 'Changed custom District did not rematch the untouched roster.');
+ echo "PASS: real custom District profile data matches users with no email/Institution match and refresh rematches changed values.\n";
 } catch (Throwable $e) { $failure = $e; }
 try { $tx->rollback(new districtupdate_test_rollback()); } catch (districtupdate_test_rollback $expected) {}
 if ($failure) { throw $failure; }

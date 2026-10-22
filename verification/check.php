@@ -29,6 +29,11 @@ namespace {
     if ($match) { $out[$id] = clone $row; }
    } return $out;
   }
+  public function get_records_menu($table, $where, $sort, $fields) {
+   [$key, $value] = array_map('trim', explode(',', $fields)); $out = [];
+   foreach ($this->get_records($table, $where) as $row) { $out[$row->$key] = $row->$value; }
+   return $out;
+  }
   public function insert_record($table, $row) {
    $id = $this->tables[$table] ? max(array_keys($this->tables[$table])) + 1 : 1;
    $row = clone $row; $row->id = $id; $this->tables[$table][$id] = $row; return $id;
@@ -83,7 +88,7 @@ namespace {
   global $DB, $USER, $MANAGER, $CONFIG, $ADMINS, $EMAILS;
   $ADMINS = []; $EMAILS = [];
   $DB = new MockDB(); $USER = (object)['id' => 10]; $MANAGER = false; $CONFIG = ['livewrites' => 0, 'excluded' => 'service-account'];
-  foreach (['local_districtupdate_dist','local_districtupdate_access','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit','local_districtupdate_cycle','user'] as $table) { $DB->tables[$table] = []; }
+  foreach (['local_districtupdate_dist','local_districtupdate_access','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit','local_districtupdate_cycle','user','user_info_field','user_info_data'] as $table) { $DB->tables[$table] = []; }
   $DB->tables['local_districtupdate_dist'] = [1 => (object)['id' => 1, 'name' => 'North', 'domains' => 'north.org', 'aliases' => 'North Schools'],
    2 => (object)['id' => 2, 'name' => 'South', 'domains' => 'south.org', 'aliases' => 'South Schools']];
   $DB->tables['local_districtupdate_access'] = [1 => (object)['id' => 1, 'districtid' => 1, 'userid' => 10]];
@@ -123,6 +128,7 @@ namespace {
  require $base.'/classes/audit_retention.php';
  require __DIR__.'/retention_contract.php';
  require __DIR__.'/auth_contract.php';
+ require __DIR__.'/profile_contract.php';
  require __DIR__.'/security_contract.php';
  require __DIR__.'/email_contract.php';
  require __DIR__.'/refresh_contract.php';

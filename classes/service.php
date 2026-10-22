@@ -55,14 +55,34 @@ final class service {
   global $DB;
   $methods = self::auth_methods();
   if (!$methods) { return; }
+  $profiledistricts = self::profile_districts();
   [$authsql, $params] = $DB->get_in_or_equal($methods, SQL_PARAMS_NAMED, 'drauth');
   $users = $DB->get_recordset_select('user', 'auth '.$authsql.' AND deleted = 0 AND suspended = 0 AND id > 1',
    $params, 'id', 'id, username, firstname, lastname, email, institution');
   try {
    foreach ($users as $user) {
-    if (!is_siteadmin($user->id) && !self::excluded($user->username)) { yield $user; }
+    if (!is_siteadmin($user->id) && !self::excluded($user->username)) {
+     $user->profiledistrict = (string)($profiledistricts[$user->id] ?? '');
+     yield $user;
+    }
    }
   } finally { $users->close(); }
+ }
+ /** Read one custom field in bulk; prefer its shortname, with a unique display-name fallback. */
+ public static function profile_districts(): array {
+  global $DB;
+  $configured = get_config('local_districtupdate', 'districtprofilefield');
+  $name = \core_text::strtolower(trim($configured === false ? 'district' : (string)$configured));
+  if ($name === '') { return []; }
+  $shortnames = []; $labels = [];
+  foreach ($DB->get_records('user_info_field') as $field) {
+   if (\core_text::strtolower(trim($field->shortname)) === $name) { $shortnames[] = $field->id; }
+   if (\core_text::strtolower(trim($field->name)) === $name) { $labels[] = $field->id; }
+  }
+  $matches = $shortnames ?: $labels;
+  if (count($matches) > 1) { self::fail('More than one custom profile field matches the district field setting. Set its unique shortname in plugin settings.'); }
+  if (!$matches) { return []; }
+  return $DB->get_records_menu('user_info_data', ['fieldid' => $matches[0]], '', 'userid, data');
  }
  public static function create_cycle(int $year, int $duedate): int {
   global $DB;
@@ -80,7 +100,7 @@ final class service {
      'districtid' => $districtid, 'revision' => 1, 'submittedby' => 0, 'submittedat' => 0, 'lastsent' => 0]);
    }
    foreach (self::eligible_users() as $user) {
-     $districtid = rules::district($user->email, $user->institution, $districts);
+     $districtid = rules::district($user->email, $user->institution, $districts, $user->profiledistrict);
      $DB->insert_record('local_districtupdate_roster', (object)['reviewid' => $reviews[$districtid], 'userid' => $user->id,
       'username' => $user->username, 'fullname' => $user->firstname.' '.$user->lastname, 'email' => $user->email,
       'institution' => $user->institution, 'status' => 'still', 'destination' => 0, 'targetcompany' => '',
@@ -141,7 +161,7 @@ final class service {
      $changed[$row->reviewid] = true; $stats['removed']++; continue;
     }
     $user = $active[$row->userid];
-    $districtid = rules::district($user->email, $user->institution, $districts);
+    $districtid = rules::district($user->email, $user->institution, $districts, $user->profiledistrict);
     $target = $bydistrict[$districtid];
     if ($frozen[$target->id]) { $stats['skipped']++; continue; }
     $update = (object)['id' => $row->id, 'reviewid' => $target->id, 'username' => $user->username,
@@ -161,7 +181,7 @@ final class service {
    foreach ($active as $user) {
     // One roster entry per user per year, including submitted and already processed entries.
     if (isset($byuser[$user->id])) { continue; }
-    $districtid = rules::district($user->email, $user->institution, $districts);
+    $districtid = rules::district($user->email, $user->institution, $districts, $user->profiledistrict);
     $target = $bydistrict[$districtid];
     if ($frozen[$target->id]) { $stats['skipped']++; continue; }
     $row = (object)['reviewid' => $target->id, 'userid' => $user->id, 'username' => $user->username,

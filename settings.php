@@ -43,6 +43,11 @@ if ($hassiteconfig) {
   ['ldap'], $authoptions));
  $settings->add(new admin_setting_configtextarea('local_districtupdate/excluded', 'Excluded usernames',
   'One exact Moodle username per line. Exclude service and shared accounts. Site admins are always excluded.', '', PARAM_RAW));
+ $settings->add(new admin_setting_configtext('local_districtupdate/districtprofilefield', 'District custom profile field',
+  'Shortname of the additional user profile field containing the district name. Defaults to district (case-insensitive). '
+  .'A unique display name is also accepted if no shortname matches. Values match district names or configured aliases. '
+  .'Conflicts with email or Institution are left unmatched for administrator review. Missing fields or values use the other matching sources. '
+  .'Leave blank to disable. Use an administrator-maintained field. Refresh draft rosters after changing this setting.', 'district', PARAM_RAW_TRIMMED));
  $settings->add(new admin_setting_configselect('local_districtupdate/auditretentiondays', 'Audit log retention',
   'Audit entries older than this period are deleted by the daily cleanup task. Rosters, responses, manual assignments '
   .'and processing status are retained. Moodle cron must be running.', 30,
