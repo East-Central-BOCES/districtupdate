@@ -8,7 +8,7 @@ namespace core\lock {
 }
 namespace {
  if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
- define('MOODLE_INTERNAL', true); define('MUST_EXIST', 2); define('DAYSECS', 86400); define('CONTEXT_SYSTEM', 10);
+ define('MOODLE_INTERNAL', true); define('MUST_EXIST', 2); define('DAYSECS', 86400); define('CONTEXT_SYSTEM', 10); define('SQL_PARAMS_NAMED', 2);
  class core_text { public static function strtolower($s) { return mb_strtolower($s); } public static function strlen($s) { return mb_strlen($s); } }
  class moodle_exception extends RuntimeException { public function __construct($error, $component = '', $link = '', $a = null) { parent::__construct((string)$a); } }
  class context_system { public static function instance() { return (object)['id' => 1]; } }
@@ -52,8 +52,12 @@ namespace {
   public function record_exists_select($table, $sql, $params) {
    foreach ($this->get_records($table, ['reviewid' => $params['id']]) as $r) { if ($r->processstate !== 'pending') { return true; } } return false;
   }
+  public function get_in_or_equal($items, $type, $prefix) {
+   $params = []; foreach (array_values($items) as $i => $value) { $params[$prefix.$i] = $value; }
+   return ['IN ('.implode(',', array_map(fn($key) => ':'.$key, array_keys($params))).')', $params];
+  }
   public function get_recordset_select($table, $sql, $params, ...$rest) {
-   return new MockRecords(array_filter($this->tables[$table] ?? [], fn($u) => $u->auth === $params['auth'] && !$u->deleted && !$u->suspended && $u->id > 1));
+   return new MockRecords(array_filter($this->tables[$table] ?? [], fn($u) => in_array($u->auth, array_values($params), true) && !$u->deleted && !$u->suspended && $u->id > 1));
   }
  }
  function get_config($component, $key = null) { global $CONFIG; return $key === null ? (object)$CONFIG : ($CONFIG[$key] ?? false); }
@@ -115,6 +119,7 @@ namespace {
  test('annual snapshot defaults to Still Employed and excludes service accounts', function() { global $DB; $service = clone $DB->tables['user'][20]; $service->id = 21; $service->username = 'service-account'; $DB->tables['user'][21] = $service; $DB->tables['local_districtupdate_review'] = []; $DB->tables['local_districtupdate_roster'] = []; $cycle = service::create_cycle(2026, time() + DAYSECS); $r = array_values($DB->tables['local_districtupdate_roster']); check(count($r) === 1 && $r[0]->status === 'still'); expect_error(fn() => service::create_cycle(2026, time() + DAYSECS), 'already exists'); });
  require $base.'/classes/audit_retention.php';
  require __DIR__.'/retention_contract.php';
+ require __DIR__.'/auth_contract.php';
  require __DIR__.'/refresh_contract.php';
  require __DIR__.'/directory_contract.php';
  echo "$count checks passed. Stubbed Moodle/AD contracts only; no live server was contacted.\n";

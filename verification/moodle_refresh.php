@@ -8,6 +8,7 @@ if (empty($argv[1]) || ($argv[2] ?? '') !== '--test-site') {
 define('CLI_SCRIPT', true);
 require $argv[1];
 core\session\manager::set_user(get_admin());
+$CFG->forced_plugin_settings['local_districtupdate']['authmethods'] = 'ldap,ldapdistrict';
 class districtupdate_test_rollback extends Exception {}
 function du_assert(bool $ok, string $message): void { if (!$ok) { throw new RuntimeException($message); } }
 $tables = ['user','local_districtupdate_dist','local_districtupdate_cycle','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit'];
@@ -27,11 +28,12 @@ try {
  $user = (object)['username' => 'du-refresh-'.$tag, 'email' => 'first@'.$domain, 'institution' => $districtname,
   'firstname' => 'Refresh', 'lastname' => 'Fixture', 'auth' => 'ldap', 'confirmed' => 1,
   'deleted' => 0, 'suspended' => 0, 'mnethostid' => $CFG->mnet_localhost_id];
+ $user->auth = 'ldapdistrict';
  $userid = $DB->insert_record('user', $user);
  \local_districtupdate\service::refresh_cycle($cycleid);
  $row = $DB->get_record('local_districtupdate_roster', ['reviewid' => $reviewid, 'userid' => $userid], '*', MUST_EXIST);
  du_assert($row->status === 'still', 'New user was not prefilled as Still Employed.');
- echo "PASS: real DB refresh adds an active LDAP user.\n";
+ echo "PASS: real DB refresh adds a user from a selected LDAP method with an alternate name.\n";
  $row->status = 'left'; $row->note = 'Preserve decision'; $row->modifiedby = get_admin()->id;
  $DB->update_record('local_districtupdate_roster', $row);
  $user->username .= '-second'; $user->email = 'second@'.$domain;

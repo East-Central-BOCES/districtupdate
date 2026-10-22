@@ -66,7 +66,7 @@ final class directory {
  public function state(object $row): array {
   global $DB;
   $user = $DB->get_record('user', ['id' => $row->userid, 'deleted' => 0], '*', MUST_EXIST);
-  if ($user->auth !== 'ldap' || $user->username !== $row->username || strcasecmp($user->email, $row->email) !== 0
+  if (!in_array($user->auth, service::auth_methods(), true) || $user->username !== $row->username || strcasecmp($user->email, $row->email) !== 0
       || is_siteadmin($user->id) || service::excluded($user->username)) {
    service::fail('Moodle account identity, authentication or exclusion status changed. Review this account manually.');
   }
@@ -111,7 +111,7 @@ final class directory {
  public static function fingerprint(array $state): string { return hash('sha256', json_encode($state)); }
  public static function config_fingerprint(): string {
   $c = get_config('local_districtupdate'); $values = [];
-  foreach (['ldapurl', 'userbase', 'binddn', 'bindpassword', 'membersdn', 'zoomdn', 'basicdn', 'identityattribute', 'livewrites', 'excluded'] as $key) {
+  foreach (['ldapurl', 'userbase', 'binddn', 'bindpassword', 'membersdn', 'zoomdn', 'basicdn', 'identityattribute', 'livewrites', 'excluded', 'authmethods'] as $key) {
    $values[$key] = $c->$key ?? '';
   }
   return hash('sha256', json_encode($values));

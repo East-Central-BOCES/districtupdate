@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 require_once(__DIR__.'/../../config.php');
 require_once(__DIR__.'/locallib.php');
+$PAGE->set_context(context_system::instance());
 require_login();
 $id = required_param('id', PARAM_INT);
 $review = \local_districtupdate\service::access($id);
 $url = new moodle_url('/local/districtupdate/review.php', ['id' => $id]);
+$district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid]);
+$cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
+local_districtupdate_page(($district ? $district->name : 'Unmatched accounts').' — '.$cycle->reviewyear.' staff review', $url);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  require_sesskey();
  $responses = $_POST['rows'] ?? [];
@@ -15,9 +19,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   required_param('action', PARAM_ALPHA) === 'submit');
  redirect($url, 'Review saved.');
 }
-$district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid]);
-$cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
-local_districtupdate_page(($district ? $district->name : 'Unmatched accounts').' — '.$cycle->reviewyear.' staff review', $url);
 echo $OUTPUT->header();
 echo html_writer::link(new moodle_url('/local/districtupdate/index.php'), 'All my reviews');
 if (!$district) { echo $OUTPUT->notification('Assign these accounts through Manage reviews.', 'warning'); echo $OUTPUT->footer(); exit; }

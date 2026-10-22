@@ -32,6 +32,27 @@ final class service {
  public static function excluded(string $username): bool {
   return in_array(strtolower($username), rules::lines((string)get_config('local_districtupdate', 'excluded')), true);
  }
+ /** Names are Moodle authentication identifiers, not directory server addresses. */
+ public static function auth_methods(): array {
+  $configured = get_config('local_districtupdate', 'authmethods');
+  if ($configured === false || $configured === null) { return ['ldap']; }
+  if (is_array($configured)) { $configured = implode(',', $configured); }
+  return array_values(array_filter(rules::lines((string)$configured), fn($name) => (bool)preg_match('/^[a-z][a-z0-9_]*$/D', $name)));
+ }
+ /** Shared source for initial snapshots and refresh; defaults to LDAP but supports other configured names. */
+ public static function eligible_users(): \Generator {
+  global $DB;
+  $methods = self::auth_methods();
+  if (!$methods) { return; }
+  [$authsql, $params] = $DB->get_in_or_equal($methods, SQL_PARAMS_NAMED, 'drauth');
+  $users = $DB->get_recordset_select('user', 'auth '.$authsql.' AND deleted = 0 AND suspended = 0 AND id > 1',
+   $params, 'id', 'id, username, firstname, lastname, email, institution');
+  try {
+   foreach ($users as $user) {
+    if (!is_siteadmin($user->id) && !self::excluded($user->username)) { yield $user; }
+   }
+  } finally { $users->close(); }
+ }
  public static function create_cycle(int $year, int $duedate): int {
   global $DB;
   $lock = self::lock('annual');
@@ -47,18 +68,13 @@ final class service {
     $reviews[$districtid] = $DB->insert_record('local_districtupdate_review', (object)['cycleid' => $cycleid,
      'districtid' => $districtid, 'revision' => 1, 'submittedby' => 0, 'submittedat' => 0, 'lastsent' => 0]);
    }
-   $users = $DB->get_recordset_select('user', 'auth = :auth AND deleted = 0 AND suspended = 0 AND id > 1',
-    ['auth' => 'ldap'], 'id', 'id, username, firstname, lastname, email, institution');
-   try {
-    foreach ($users as $user) {
-     if (is_siteadmin($user->id) || self::excluded($user->username)) { continue; }
+   foreach (self::eligible_users() as $user) {
      $districtid = rules::district($user->email, $user->institution, $districts);
      $DB->insert_record('local_districtupdate_roster', (object)['reviewid' => $reviews[$districtid], 'userid' => $user->id,
       'username' => $user->username, 'fullname' => $user->firstname.' '.$user->lastname, 'email' => $user->email,
       'institution' => $user->institution, 'status' => 'still', 'destination' => 0, 'targetcompany' => '',
       'note' => '', 'modifiedby' => 0, 'modifiedat' => 0, 'processstate' => 'pending']);
-    }
-   } finally { $users->close(); }
+   }
    self::audit(0, 0, 'cycle_created', ['cycleid' => $cycleid, 'year' => $year]);
    $tx->allow_commit();
    return $cycleid;
@@ -90,13 +106,7 @@ final class service {
    }
    $stats['locked'] = count(array_filter($frozen));
    $active = [];
-   $users = $DB->get_recordset_select('user', 'auth = :auth AND deleted = 0 AND suspended = 0 AND id > 1',
-    ['auth' => 'ldap'], 'id', 'id, username, firstname, lastname, email, institution');
-   try {
-    foreach ($users as $user) {
-     if (!is_siteadmin($user->id) && !self::excluded($user->username)) { $active[$user->id] = $user; }
-    }
-   } finally { $users->close(); }
+   foreach (self::eligible_users() as $user) { $active[$user->id] = $user; }
    $tx = $DB->start_delegated_transaction();
    // Districts added after the annual snapshot can now receive an open review, without invitations.
    foreach (array_merge([0], array_keys($districts)) as $districtid) {
@@ -115,7 +125,7 @@ final class service {
     }
     if (!isset($active[$row->userid])) {
      self::audit(0, $row->userid, 'roster_account_removed', ['cycleid' => $cycleid, 'reviewid' => $row->reviewid,
-      'snapshot' => $row, 'reason' => 'No longer an eligible active LDAP user in Moodle']);
+      'snapshot' => $row, 'reason' => 'No longer an eligible active user in Moodle']);
      $DB->delete_records('local_districtupdate_roster', ['id' => $row->id]);
      $changed[$row->reviewid] = true; $stats['removed']++; continue;
     }

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 require_once(__DIR__.'/../../config.php');
 require_once(__DIR__.'/locallib.php');
+$PAGE->set_context(context_system::instance());
 require_login();
 require_capability('local/districtupdate:manage', context_system::instance());
 $url = new moodle_url('/local/districtupdate/manage.php');
+local_districtupdate_page('Manage district staff reviews', $url);
 $action = optional_param('action', '', PARAM_ALPHA);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  require_sesskey();
@@ -57,7 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   redirect($url, 'LDAPS bind succeeded and all three groups were identified. No accounts were changed.');
  } else { \local_districtupdate\service::fail('Unknown action.'); }
 }
-local_districtupdate_page('Manage district staff reviews', $url);
 echo $OUTPUT->header();
 echo html_writer::link(new moodle_url('/local/districtupdate/index.php'), 'Review dashboard').' · '
  .html_writer::link(new moodle_url('/admin/settings.php', ['section' => 'local_districtupdate']), 'Plugin settings');

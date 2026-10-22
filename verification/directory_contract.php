@@ -118,4 +118,21 @@ namespace {
   check(!str_contains(json_encode($DB->tables['local_districtupdate_audit']), 'FAKE_TEST_SECRET'));
   $writes = $AD['writes']; \local_districtupdate\processor::process($b); check($AD['writes'] === $writes);
  });
+
+ test('selected alternate authentication method is verified against the same AD connection', function() {
+  global $CONFIG, $DB; $r = ad_fixture(); $CONFIG['authmethods'] = 'ldap,ldapdistrict';
+  $DB->tables['user'][20]->auth = 'ldapdistrict'; $d = new \local_districtupdate\directory();
+  $state = $d->state($r); check($state['email'] === 'person@north.org');
+ });
+ test('unselected authentication method cannot be processed in AD', function() {
+  global $DB, $AD; $r = ad_fixture(); $DB->tables['user'][20]->auth = 'ldapdistrict';
+  $d = new \local_districtupdate\directory(); expect_error(fn() => $d->state($r), 'authentication or exclusion');
+  check($AD['writes'] === 0);
+ });
+ test('changing authentication selection invalidates an existing AD preview', function() {
+  global $CONFIG, $DB, $MANAGER; $MANAGER = true; ad_fixture();
+  $DB->tables['local_districtupdate_review'][1]->submittedat = time(); $DB->tables['local_districtupdate_roster'][1]->status = 'left';
+  $b = \local_districtupdate\processor::preview(1, [1]); $CONFIG['authmethods'] = 'ldap,ldapdistrict';
+  expect_error(fn() => \local_districtupdate\processor::process($b), 'settings changed');
+ });
 }

@@ -1,6 +1,7 @@
 <?php
 // SPDX-License-Identifier: GPL-3.0-or-later
  defined('MOODLE_INTERNAL') || die();
+global $DB;
 if ($hassiteconfig) {
  $settings = new admin_settingpage('local_districtupdate', get_string('pluginname', 'local_districtupdate'));
  $ADMIN->add('localplugins', $settings);
@@ -27,6 +28,19 @@ if ($hassiteconfig) {
   'Set bindpassword through $CFG->forced_plugin_settings in config.php; no password is collected by this page.'));
  $settings->add(new admin_setting_configcheckbox('local_districtupdate/livewrites', 'Enable approved AD writes',
   'Off: preview only. On: administrators can preview current AD state and explicitly confirm selected changes.', 0));
+ $authoptions = [];
+ foreach (core_component::get_plugin_list('auth') as $auth => $path) {
+  $authoptions[$auth] = get_string('pluginname', 'auth_'.$auth).' ('.$auth.')';
+ }
+ foreach ($DB->get_records_sql('SELECT DISTINCT auth FROM {user} WHERE deleted = 0') as $account) {
+  if (!isset($authoptions[$account->auth])) { $authoptions[$account->auth] = $account->auth; }
+ }
+ asort($authoptions);
+ $settings->add(new admin_setting_configmultiselect('local_districtupdate/authmethods', 'Roster authentication methods',
+  'Select the Moodle authentication methods whose users should be reviewed. Include every applicable LDAP method, '
+  .'even if its identifier is not ldap. This does not change how users sign in. All selected accounts use the one '
+  .'AD connection configured above; username and email are verified before processing. Refresh draft rosters after changing this selection.',
+  ['ldap'], $authoptions));
  $settings->add(new admin_setting_configtextarea('local_districtupdate/excluded', 'Excluded usernames',
   'One exact Moodle username per line. Exclude service and shared accounts. Site admins are always excluded.', '', PARAM_RAW));
  $settings->add(new admin_setting_configselect('local_districtupdate/auditretentiondays', 'Audit log retention',

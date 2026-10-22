@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 require_once(__DIR__.'/../../config.php');
 require_once(__DIR__.'/locallib.php');
+$PAGE->set_context(context_system::instance());
 require_login();
 if (isguestuser()) { throw new required_capability_exception(context_system::instance(), 'moodle/site:config', 'nopermissions', ''); }
 local_districtupdate_page('District staff reviews', new moodle_url('/local/districtupdate/index.php'));

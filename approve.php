@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 require_once(__DIR__.'/../../config.php');
 require_once(__DIR__.'/locallib.php');
+$PAGE->set_context(context_system::instance());
 require_login();
 require_capability('local/districtupdate:manage', context_system::instance());
 $reviewid = required_param('reviewid', PARAM_INT);
 $review = \local_districtupdate\service::access($reviewid);
 if (!$review->submittedat || !$review->districtid) { \local_districtupdate\service::fail('This district review has not been submitted.'); }
 $url = new moodle_url('/local/districtupdate/approve.php', ['reviewid' => $reviewid]);
+$district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
+local_districtupdate_page('Approve directory changes — '.$district->name, $url);
 $batch = null; $token = ''; $results = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  require_sesskey();
@@ -32,8 +35,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $results = \local_districtupdate\processor::process($processingbatch);
  } else { \local_districtupdate\service::fail('Unknown action.'); }
 }
-$district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
-local_districtupdate_page('Approve directory changes — '.$district->name, $url);
 echo $OUTPUT->header();
 echo html_writer::link(new moodle_url('/local/districtupdate/manage.php'), 'Manage all reviews');
 if ($results !== null) {
