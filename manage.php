@@ -14,14 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $id = optional_param('districtid', 0, PARAM_INT);
   $name = required_param('name', PARAM_TEXT);
   if (trim($name) === '' || core_text::strlen($name) > 64) { \local_districtupdate\service::fail('Use a district name of 1–64 characters, exactly as it should appear in AD Company.'); }
-  $reviewers = \local_districtupdate\rules::lines(required_param('reviewers', PARAM_RAW));
-  $userids = [];
-  foreach ($reviewers as $username) {
-   $u = $DB->get_record('user', ['username' => $username, 'deleted' => 0, 'suspended' => 0], '*', MUST_EXIST);
-   if (isguestuser($u)) { \local_districtupdate\service::fail('Guests cannot be reviewers.'); }
-   $userids[] = $u->id;
-  }
-  if (!$userids) { \local_districtupdate\service::fail('Assign at least one active Moodle reviewer username.'); }
+  $userids = \local_districtupdate\service::reviewer_ids(required_param('reviewers', PARAM_RAW));
   $district = (object)['name' => trim($name), 'domains' => required_param('domains', PARAM_RAW), 'aliases' => required_param('aliases', PARAM_RAW)];
   $tx = $DB->start_delegated_transaction();
   if ($id) { $DB->get_record('local_districtupdate_dist', ['id' => $id], '*', MUST_EXIST); $district->id = $id; $DB->update_record('local_districtupdate_dist', $district); }
@@ -71,7 +64,7 @@ $rows = [];
 foreach ($districts as $d) {
  $names = [];
  foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $d->id]) as $a) {
-  $u = $DB->get_record('user', ['id' => $a->userid]); if ($u) { $names[] = fullname($u).' ('.$u->username.')'; }
+  $u = $DB->get_record('user', ['id' => $a->userid]); if ($u) { $names[] = fullname($u).' ('.$u->email.'; '.$u->username.')'; }
  }
  $rows[] = [s($d->name), s($d->domains), s($d->aliases), s(implode('; ', $names)),
   html_writer::link(new moodle_url($url, ['edit' => $d->id]), 'Edit')];
@@ -83,6 +76,7 @@ $d = $edit ? $DB->get_record('local_districtupdate_dist', ['id' => $edit], '*', 
 $reviewers = [];
 if ($edit) {
  foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $edit]) as $a) {
+  // Keep an unambiguous identifier when editing, even where several users share an email.
   $u = $DB->get_record('user', ['id' => $a->userid]); if ($u) { $reviewers[] = $u->username; }
  }
 }
@@ -95,11 +89,12 @@ echo local_districtupdate_formstart($url).local_districtupdate_hidden('districti
 echo html_writer::tag('label', 'District name — one district (exact AD Company name)', ['for' => 'district-name'])
  .local_districtupdate_input('name', $d->name, 'text', ['id' => 'district-name', 'required' => 'required', 'maxlength' => 64]);
 foreach (['domains' => 'Email domains, one per line (without @)', 'aliases' => 'Other Institution or District profile names for this same district, one per line',
- 'reviewers' => 'Assigned Moodle usernames, one per line'] as $key => $label) {
+ 'reviewers' => 'Reviewer email addresses or Moodle usernames, one per line'] as $key => $label) {
  echo html_writer::tag('label', s($label), ['for' => 'district-'.$key]);
  echo html_writer::tag('textarea', s($key === 'reviewers' ? implode("\n", $reviewers) : $d->$key),
   ['name' => $key, 'id' => 'district-'.$key, 'rows' => 4, 'class' => 'form-control', 'style' => 'min-height: 7rem; resize: vertical']);
 }
+echo html_writer::tag('p', 'Each reviewer must already have an active Moodle account. Shared email addresses require a unique username. Existing assignments appear as usernames when editing.');
 echo local_districtupdate_button($edit ? 'Save district changes' : 'Save district and add another', 'action', 'district').'</form>';
 $PAGE->requires->js_init_code("document.getElementById('district-name').addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); document.getElementById('district-domains').focus(); } });");
 echo $OUTPUT->heading('Start an annual review', 3);

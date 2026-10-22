@@ -17,7 +17,7 @@ function du_invite_assert(bool $ok, string $message): void { if (!$ok) { throw n
 $tables = ['user','local_districtupdate_dist','local_districtupdate_access','local_districtupdate_cycle','local_districtupdate_review','local_districtupdate_audit'];
 $before = [];
 foreach ($tables as $table) { $before[$table] = $DB->count_records($table); }
-$tx = $DB->start_delegated_transaction(); $failure = null;
+$fixturetx = $DB->start_delegated_transaction(); $failure = null;
 set_error_handler(function($level, $message, $file, $line) {
  if (($level & error_reporting()) && $level === E_USER_NOTICE) { throw new ErrorException($message, 0, $level, $file, $line); }
  return false;
@@ -36,6 +36,31 @@ try {
   'firstname' => 'Invitation', 'lastname' => 'Fixture', 'auth' => 'manual', 'confirmed' => 1,
   'deleted' => 0, 'suspended' => 0, 'mnethostid' => $CFG->mnet_localhost_id]);
  $DB->insert_record('local_districtupdate_access', (object)['districtid' => $districtid, 'userid' => $userid]);
+ du_invite_assert(\local_districtupdate\service::reviewer_ids(strtoupper($email)."\ndu-invite-".$tag) === [(int)$userid],
+  'Email/username lookup did not resolve to one account.');
+ $duplicate = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+ unset($duplicate->id); $duplicate->username .= '-duplicate';
+ $duplicateid = $DB->insert_record('user', $duplicate);
+ try {
+  \local_districtupdate\service::reviewer_ids($email);
+  throw new RuntimeException('Ambiguous email was accepted.');
+ } catch (moodle_exception $e) {
+  du_invite_assert(str_contains($e->getMessage(), 'More than one'), 'Wrong ambiguity error.');
+ }
+ $DB->set_field('user', 'suspended', 1, ['id' => $duplicateid]);
+ $_SERVER['REQUEST_METHOD'] = 'POST';
+ $_GET = []; $_POST = ['action' => 'district', 'districtid' => $districtid, 'name' => 'Invitation Test '.$tag,
+  'domains' => '', 'aliases' => '', 'reviewers' => strtoupper($email)."\ndu-invite-".$tag, 'sesskey' => sesskey()];
+ $PAGE = new moodle_page(); ob_start();
+ try {
+  require $CFG->dirroot.'/local/districtupdate/manage.php';
+  throw new RuntimeException('District POST did not reach its redirect.');
+ } catch (moodle_exception $e) {
+  if ($e->errorcode !== 'redirecterrordetected') { throw $e; }
+ } finally { ob_end_clean(); }
+ $assignments = $DB->get_records('local_districtupdate_access', ['districtid' => $districtid]);
+ du_invite_assert(count($assignments) === 1 && (int)reset($assignments)->userid === (int)$userid, 'District email assignment failed or duplicated access.');
+ echo "PASS: actual district-save POST accepts email, deduplicates username/email, excludes suspended users and blocks ambiguous active emails.\n";
  $_SERVER['REQUEST_METHOD'] = 'POST';
  $_GET = []; $_POST = ['action' => 'invite', 'reviewid' => $reviewid, 'sesskey' => sesskey()];
  $PAGE = new moodle_page();
@@ -58,7 +83,7 @@ try {
  echo "PASS: real invitation POST completed with strict coding notices enabled; synthetic email sent only to local Mailpit.\n";
 } catch (Throwable $e) { $failure = $e; }
 restore_error_handler();
-try { $tx->rollback(new districtupdate_invite_rollback()); } catch (districtupdate_invite_rollback $expected) {}
+try { $fixturetx->rollback(new districtupdate_invite_rollback()); } catch (districtupdate_invite_rollback $expected) {}
 if ($failure) { throw $failure; }
 foreach ($tables as $table) { du_invite_assert($DB->count_records($table) === $before[$table], 'Fixture data remained in '.$table); }
 echo "PASS: all database fixtures rolled back; no reviewer invitations or AD changes were made.\n";

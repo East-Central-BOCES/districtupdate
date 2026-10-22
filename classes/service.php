@@ -9,6 +9,24 @@ final class service {
  public static function manager(): bool {
   return has_capability('local/districtupdate:manage', \context_system::instance());
  }
+ /** Resolve emails/usernames to stable account IDs before replacing any assignments. */
+ public static function reviewer_ids(string $entries): array {
+  global $DB;
+  require_capability('local/districtupdate:manage', \context_system::instance());
+  $ids = [];
+  foreach (rules::lines($entries) as $entry) {
+   $matches = $DB->get_records_select('user',
+    'deleted = 0 AND suspended = 0 AND (LOWER(username) = :reviewerusername OR LOWER(email) = :revieweremail)',
+    ['reviewerusername' => $entry, 'revieweremail' => $entry], 'id', '*', 0, 2);
+   if (!$matches) { self::fail('No active Moodle account matches reviewer "'.$entry.'". Use an existing account email address or username.'); }
+   if (count($matches) !== 1) { self::fail('More than one active Moodle account matches reviewer "'.$entry.'". Use a unique Moodle username instead.'); }
+   $user = reset($matches);
+   if (isguestuser($user)) { self::fail('Guests cannot be reviewers.'); }
+   $ids[(int)$user->id] = (int)$user->id;
+  }
+  if (!$ids) { self::fail('Assign at least one active Moodle reviewer email address or username.'); }
+  return array_values($ids);
+ }
  public static function lock(string $key): \core\lock\lock {
   $lock = \core\lock\lock_config::get_lock_factory('local_districtupdate')->get_lock($key, 10);
   if (!$lock) { self::fail('Another person is updating this review. Please try again.'); }

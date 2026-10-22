@@ -34,6 +34,10 @@ namespace {
    foreach ($this->get_records($table, $where) as $row) { $out[$row->$key] = $row->$value; }
    return $out;
   }
+  public function get_records_select($table, $sql, $params, ...$unused) {
+   return array_filter($this->tables[$table] ?? [], fn($u) => !$u->deleted && !$u->suspended
+    && (strtolower($u->username) === $params['reviewerusername'] || strtolower($u->email) === $params['revieweremail']));
+  }
   public function insert_record($table, $row) {
    $id = $this->tables[$table] ? max(array_keys($this->tables[$table])) + 1 : 1;
    $row = clone $row; $row->id = $id; $this->tables[$table][$id] = $row; return $id;
@@ -69,6 +73,7 @@ namespace {
  function has_capability(...$args) { global $MANAGER; return $MANAGER; }
  function require_capability(...$args) { if (!has_capability()) { throw new RuntimeException('No permission'); } }
  function is_siteadmin($id) { return $id === 99; }
+ function isguestuser($u = null) { return ($u->id ?? 0) === 1; }
  function get_admins() { global $ADMINS; return $ADMINS; }
  class core_user { public static function get_noreply_user() { return (object)['id' => 0]; } }
  function email_to_user($to, $from, $subject, $body) { global $EMAILS; $EMAILS[] = compact('to', 'subject', 'body'); return true; }
@@ -129,6 +134,7 @@ namespace {
  require __DIR__.'/retention_contract.php';
  require __DIR__.'/auth_contract.php';
  require __DIR__.'/profile_contract.php';
+ require __DIR__.'/reviewer_contract.php';
  require __DIR__.'/security_contract.php';
  require __DIR__.'/email_contract.php';
  require __DIR__.'/refresh_contract.php';
