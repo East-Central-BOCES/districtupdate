@@ -66,9 +66,29 @@ try {
  core\session\manager::set_user($reviewer);
  du_security_assert(!(int)\local_districtupdate\service::access($reviewid)->submittedat, 'Reopening did not restore access.');
  echo "PASS: administrator reopening restores reviewer access.\n";
+ core\session\manager::set_user($admin);
+ require_once($CFG->libdir.'/adminlib.php');
+ $settingspage = admin_get_root(false, true)->locate('local_districtupdate');
+ foreach (['admin', 'invitation'] as $type) {
+  $subjectsetting = $settingspage->settings->{'local_districtupdate'.$type.'subject'};
+  $bodysetting = $settingspage->settings->{'local_districtupdate'.$type.'body'};
+  du_security_assert($subjectsetting->write_setting('Custom '.$type.' '.$tag.' {district}') === '', 'Subject setting could not save.');
+  du_security_assert($bodysetting->write_setting("Custom {district} {year}\n{reviewurl}") === '', 'Body setting could not save.');
+  if ($type === 'admin') { \local_districtupdate\service::notify_admins($reviewid); }
+  else { \local_districtupdate\service::invite($reviewid); }
+  $mail = json_decode(file_get_contents('http://mailpit:8025/_/mail/api/v1/search?query='.rawurlencode('subject:"Custom '.$type.' '.$tag.'"'), false, $context), true, 512, JSON_THROW_ON_ERROR);
+  du_security_assert(!empty($mail['messages']), 'Custom '.$type.' notification missing from Mailpit.');
+  $message = json_decode(file_get_contents('http://mailpit:8025/_/mail/api/v1/message/'.rawurlencode($mail['messages'][0]['ID']), false, $context), true, 512, JSON_THROW_ON_ERROR);
+  $link = (new moodle_url('/local/districtupdate/'.($type === 'admin' ? 'approve.php' : 'review.php'),
+   [$type === 'admin' ? 'reviewid' : 'id' => $reviewid]))->out(false);
+  du_security_assert(trim(str_replace("\r\n", "\n", $message['Text'] ?? '')) === "Custom ".$name.' '.$year."\n".$link, 'Custom body did not expand correctly.');
+  du_security_assert($message['Subject'] === 'Custom '.$type.' '.$tag.' '.$name, 'Custom subject did not expand correctly.');
+ }
+ echo "PASS: actual Moodle settings save customized admin and reviewer emails; expanded subjects and bodies received in local Mailpit.\n";
 } catch (Throwable $e) { $failure = $e; }
 core\session\manager::set_user($admin);
 try { $tx->rollback(new districtupdate_security_rollback()); } catch (districtupdate_security_rollback $expected) {}
+cache_helper::purge_by_definition('core', 'config');
 if ($failure) { throw $failure; }
 foreach ($tables as $table) { du_security_assert($DB->count_records($table) === $before[$table], 'Fixture remained in '.$table); }
 echo "PASS: all database fixtures rolled back; no AD operations or external email delivery.\n";

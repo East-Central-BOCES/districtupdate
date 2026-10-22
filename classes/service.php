@@ -234,9 +234,11 @@ final class service {
   global $DB;
   $review = $DB->get_record('local_districtupdate_review', ['id' => $reviewid], '*', MUST_EXIST);
   $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
-  $body = (new \moodle_url('/local/districtupdate/approve.php', ['reviewid' => $reviewid]))->out(false);
+  $cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
+  $url = (new \moodle_url('/local/districtupdate/approve.php', ['reviewid' => $reviewid]))->out(false);
+  $message = email_templates::render('admin', $district, $cycle, $url);
   foreach (get_admins() as $admin) {
-   $sent = email_to_user($admin, \core_user::get_noreply_user(), 'District review submitted: '.$district->name, $body);
+   $sent = email_to_user($admin, \core_user::get_noreply_user(), $message['subject'], $message['body']);
    self::audit(0, $admin->id, $sent ? 'admin_email_sent' : 'admin_email_failed', ['reviewid' => $reviewid]);
   }
  }
@@ -247,14 +249,12 @@ final class service {
   $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
   $cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
   $url = (new \moodle_url('/local/districtupdate/review.php', ['id' => $reviewid]))->out(false);
-  $body = 'Please review the '.$cycle->reviewyear.' staff roster for '.$district->name.'. Due: '.userdate($cycle->duedate)
-   ."\n\nEveryone starts as Still Employed. Change anyone who has left or moved to another ECBOCES district. "
-   ."You must sign into your assigned Moodle account. Save changes or submit the completed review.\n\n".$url;
+  $message = email_templates::render('invitation', $district, $cycle, $url);
   $success = false;
   foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $review->districtid]) as $assignment) {
    $user = $DB->get_record('user', ['id' => $assignment->userid, 'deleted' => 0, 'suspended' => 0]);
    if (!$user) { continue; }
-   $sent = email_to_user($user, \core_user::get_noreply_user(), $cycle->reviewyear.' staff review: '.$district->name, $body);
+   $sent = email_to_user($user, \core_user::get_noreply_user(), $message['subject'], $message['body']);
    self::audit(0, $user->id, $sent ? 'invitation_sent' : 'invitation_failed', ['reviewid' => $reviewid]);
    $success = $success || $sent;
   }
