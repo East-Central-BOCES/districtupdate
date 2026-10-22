@@ -38,6 +38,10 @@ for table in tables:
         assert set(index.attrib['FIELDS'].replace(' ', '').split(',')) <= set(cols)
 assert next(f for t in tables if t.attrib['NAME'] == 'local_districtupdate_roster' for f in t.findall('./FIELDS/FIELD') if f.attrib['NAME'] == 'status').attrib['DEFAULT'] == 'still'
 print('XMLDB structural checks passed: 6 tables', flush=True)
+pickersource = (root/'amd/src/reviewer_picker.js').read_text()
+assert (root/'amd/build/reviewer_picker.min.js').read_text() == pickersource.replace(
+    'define([', "define('local_districtupdate/reviewer_picker', [", 1
+), 'The packaged Moodle AMD module must match its source'
 # Every DB table referenced by plugin source must be declared in install.xml.
 references = set()
 for path in files:

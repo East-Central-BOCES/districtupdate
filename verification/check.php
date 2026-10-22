@@ -81,7 +81,7 @@ namespace {
  function userdate($date) { return (string)$date; }
  class moodle_url { public function __construct(...$args) {} public function out($escaped = true) { return 'https://example.invalid/local/districtupdate/'; } }
  $base = dirname(__DIR__);
- require $base.'/classes/rules.php'; require $base.'/classes/email_templates.php'; require $base.'/classes/service.php'; require $base.'/classes/directory.php'; require $base.'/classes/processor.php';
+ require $base.'/classes/rules.php'; require $base.'/classes/email_templates.php'; require $base.'/classes/service.php'; require $base.'/classes/reviewers.php'; require $base.'/classes/directory.php'; require $base.'/classes/processor.php';
  $count = 0;
  function check($condition, string $message = 'Assertion failed'): void { if (!$condition) { throw new RuntimeException($message); } }
  function expect_error(callable $f, string $part): void {
@@ -135,6 +135,7 @@ namespace {
  require __DIR__.'/auth_contract.php';
  require __DIR__.'/profile_contract.php';
  require __DIR__.'/reviewer_contract.php';
+ require __DIR__.'/picker_contract.php';
  require __DIR__.'/security_contract.php';
  require __DIR__.'/email_contract.php';
  require __DIR__.'/refresh_contract.php';

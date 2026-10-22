@@ -50,7 +50,8 @@ try {
  $DB->set_field('user', 'suspended', 1, ['id' => $duplicateid]);
  $_SERVER['REQUEST_METHOD'] = 'POST';
  $_GET = []; $_POST = ['action' => 'district', 'districtid' => $districtid, 'name' => 'Invitation Test '.$tag,
-  'domains' => '', 'aliases' => '', 'reviewers' => strtoupper($email)."\ndu-invite-".$tag, 'sesskey' => sesskey()];
+  'domains' => '', 'aliases' => '', 'reviewerids' => [$userid, $userid],
+  '_qf__local_districtupdate_form_district' => 1, 'sesskey' => sesskey()];
  $PAGE = new moodle_page(); ob_start();
  try {
   require $CFG->dirroot.'/local/districtupdate/manage.php';
@@ -60,7 +61,7 @@ try {
  } finally { ob_end_clean(); }
  $assignments = $DB->get_records('local_districtupdate_access', ['districtid' => $districtid]);
  du_invite_assert(count($assignments) === 1 && (int)reset($assignments)->userid === (int)$userid, 'District email assignment failed or duplicated access.');
- echo "PASS: actual district-save POST accepts email, deduplicates username/email, excludes suspended users and blocks ambiguous active emails.\n";
+ echo "PASS: actual district-save POST accepts selected user IDs; legacy email resolution remains unambiguous.\n";
  $_SERVER['REQUEST_METHOD'] = 'POST';
  $_GET = []; $_POST = ['action' => 'invite', 'reviewid' => $reviewid, 'sesskey' => sesskey()];
  $PAGE = new moodle_page();

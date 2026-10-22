@@ -8,21 +8,31 @@ require_capability('local/districtupdate:manage', context_system::instance());
 $url = new moodle_url('/local/districtupdate/manage.php');
 local_districtupdate_page('Manage district staff reviews', $url);
 $action = optional_param('action', '', PARAM_ALPHA);
+$edit = optional_param('edit', 0, PARAM_INT);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'district') { $edit = optional_param('districtid', 0, PARAM_INT); }
+$districtdata = $edit ? $DB->get_record('local_districtupdate_dist', ['id' => $edit], '*', MUST_EXIST)
+ : (object)['name' => '', 'domains' => '', 'aliases' => ''];
+$reviewerids = $edit ? array_values($DB->get_records_menu('local_districtupdate_access', ['districtid' => $edit], '', 'id, userid')) : [];
+$districtform = new \local_districtupdate\form\district($url, ['reviewerids' => $reviewerids, 'editing' => (bool)$edit]);
+$districtform->set_data((object)['districtid' => $edit, 'name' => $districtdata->name, 'domains' => $districtdata->domains,
+ 'aliases' => $districtdata->aliases, 'reviewerids' => $reviewerids]);
+if ($action === 'district' && $districtform->is_cancelled()) { redirect($url); }
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  require_sesskey();
  if ($action === 'district') {
-  $id = optional_param('districtid', 0, PARAM_INT);
-  $name = required_param('name', PARAM_TEXT);
-  if (trim($name) === '' || core_text::strlen($name) > 64) { \local_districtupdate\service::fail('Use a district name of 1–64 characters, exactly as it should appear in AD Company.'); }
-  $userids = \local_districtupdate\service::reviewer_ids(required_param('reviewers', PARAM_RAW));
-  $district = (object)['name' => trim($name), 'domains' => required_param('domains', PARAM_RAW), 'aliases' => required_param('aliases', PARAM_RAW)];
-  $tx = $DB->start_delegated_transaction();
-  if ($id) { $DB->get_record('local_districtupdate_dist', ['id' => $id], '*', MUST_EXIST); $district->id = $id; $DB->update_record('local_districtupdate_dist', $district); }
-  else { $id = $DB->insert_record('local_districtupdate_dist', $district); }
-  $DB->delete_records('local_districtupdate_access', ['districtid' => $id]);
-  foreach ($userids as $userid) { $DB->insert_record('local_districtupdate_access', (object)['districtid' => $id, 'userid' => $userid]); }
-  \local_districtupdate\service::audit(0, 0, 'district_configured', ['districtid' => $id, 'reviewercount' => count($userids)]);
-  $tx->allow_commit(); redirect($url, 'District saved. Refresh an existing annual roster to include new districts or matching changes.');
+  if ($data = $districtform->get_data()) {
+   $id = (int)$data->districtid;
+   $userids = \local_districtupdate\reviewers::validate_ids($data->reviewerids);
+   $district = (object)['name' => trim($data->name), 'domains' => $data->domains, 'aliases' => $data->aliases];
+   $tx = $DB->start_delegated_transaction();
+   if ($id) { $DB->get_record('local_districtupdate_dist', ['id' => $id], '*', MUST_EXIST); $district->id = $id; $DB->update_record('local_districtupdate_dist', $district); }
+   else { $id = $DB->insert_record('local_districtupdate_dist', $district); }
+   $DB->delete_records('local_districtupdate_access', ['districtid' => $id]);
+   foreach ($userids as $userid) { $DB->insert_record('local_districtupdate_access', (object)['districtid' => $id, 'userid' => $userid]); }
+   \local_districtupdate\service::audit(0, 0, 'district_configured', ['districtid' => $id, 'reviewercount' => count($userids)]);
+   $tx->allow_commit(); redirect($url, 'District saved. Refresh an existing annual roster to include new districts or matching changes.');
+  }
  } elseif ($action === 'create') {
   $date = required_param('due', PARAM_RAW_TRIMMED);
   $due = DateTimeImmutable::createFromFormat('!Y-m-d', $date, core_date::get_server_timezone_object());
@@ -71,32 +81,9 @@ foreach ($districts as $d) {
 }
 echo $OUTPUT->heading('Districts and reviewers', 3);
 echo local_districtupdate_table(['District / AD Company', 'Email domains', 'Institution / District aliases', 'Reviewers', ''], $rows);
-$edit = optional_param('edit', 0, PARAM_INT);
-$d = $edit ? $DB->get_record('local_districtupdate_dist', ['id' => $edit], '*', MUST_EXIST) : (object)['name' => '', 'domains' => '', 'aliases' => ''];
-$reviewers = [];
-if ($edit) {
- foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $edit]) as $a) {
-  // Keep an unambiguous identifier when editing, even where several users share an email.
-  $u = $DB->get_record('user', ['id' => $a->userid]); if ($u) { $reviewers[] = $u->username; }
- }
-}
 echo $OUTPUT->heading($edit ? 'Edit district' : 'Add one district', 4);
-echo html_writer::tag('p', $edit
- ? 'Update this district’s details below. In the larger boxes, press Enter to start a new line.'
- : 'Add one district at a time. Enter its details and reviewers, then choose Save district and add another. '
-   .'In the larger boxes, press Enter to start a new line.');
-echo local_districtupdate_formstart($url).local_districtupdate_hidden('districtid', $edit);
-echo html_writer::tag('label', 'District name — one district (exact AD Company name)', ['for' => 'district-name'])
- .local_districtupdate_input('name', $d->name, 'text', ['id' => 'district-name', 'required' => 'required', 'maxlength' => 64]);
-foreach (['domains' => 'Email domains, one per line (without @)', 'aliases' => 'Other Institution or District profile names for this same district, one per line',
- 'reviewers' => 'Reviewer email addresses or Moodle usernames, one per line'] as $key => $label) {
- echo html_writer::tag('label', s($label), ['for' => 'district-'.$key]);
- echo html_writer::tag('textarea', s($key === 'reviewers' ? implode("\n", $reviewers) : $d->$key),
-  ['name' => $key, 'id' => 'district-'.$key, 'rows' => 4, 'class' => 'form-control', 'style' => 'min-height: 7rem; resize: vertical']);
-}
-echo html_writer::tag('p', 'Each reviewer must already have an active Moodle account. Shared email addresses require a unique username. Existing assignments appear as usernames when editing.');
-echo local_districtupdate_button($edit ? 'Save district changes' : 'Save district and add another', 'action', 'district').'</form>';
-$PAGE->requires->js_init_code("document.getElementById('district-name').addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); document.getElementById('district-domains').focus(); } });");
+$districtform->display();
+$PAGE->requires->js_init_code("document.getElementById('id_name').addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); document.getElementById('id_domains').focus(); } });");
 echo $OUTPUT->heading('Start an annual review', 3);
 echo local_districtupdate_formstart($url);
 echo '<label>Review year '.local_districtupdate_input('year', userdate(time(), '%Y'), 'number', ['min' => 2020, 'max' => 2100, 'required' => 'required']).'</label> ';
