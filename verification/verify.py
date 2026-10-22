@@ -13,6 +13,12 @@ xml = ET.parse(root / 'db/install.xml').getroot()
 assert xml.attrib['PATH'] == 'local/districtupdate/db'
 assert (root/'lang/en/local_districtupdate.php').is_file()
 assert not (root/'lang/en/local_districtreview.php').exists()
+# Moodle's role editor derives each capability label from pluginname:capability.
+langkeys = set(re.findall(r"\$string\[['\"]([^'\"]+)['\"]\]", (root/'lang/en/local_districtupdate.php').read_text()))
+for capability in re.findall(r"['\"](local/[^'\"]+:[^'\"]+)['\"]\s*=>", (root/'db/access.php').read_text()):
+    labelkey = capability.split('/', 1)[1]
+    assert labelkey in langkeys, f"Missing capability language label: {labelkey}"
+
 expected = {'local_districtupdate_dist', 'local_districtupdate_access', 'local_districtupdate_cycle', 'local_districtupdate_review', 'local_districtupdate_roster', 'local_districtupdate_audit'}
 tables = xml.findall('./TABLES/TABLE')
 assert {t.attrib['NAME'] for t in tables} == expected
