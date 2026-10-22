@@ -21,7 +21,18 @@ final class service {
     ['districtid' => $review->districtid, 'userid' => $USER->id]))) {
    self::fail('You are not assigned to this district review.');
   }
+  if (!self::manager() && self::reviewer_access_expired($review)) {
+   self::fail('Reviewer access expired 30 days after submission. Contact an administrator if you need this review reopened.');
+  }
   return $review;
+ }
+ /** Expiration is per review; district assignments remain available for the next annual cycle. */
+ public static function reviewer_access_expires_at(object $review): int {
+  return $review->submittedat ? (int)$review->submittedat + 30 * DAYSECS : 0;
+ }
+ public static function reviewer_access_expired(object $review, ?int $now = null): bool {
+  $expires = self::reviewer_access_expires_at($review);
+  return $expires !== 0 && ($now ?? time()) >= $expires;
  }
  public static function audit(int $rosterid, int $userid, string $event, array $detail = []): void {
   global $DB, $USER;
@@ -223,14 +234,7 @@ final class service {
   global $DB;
   $review = $DB->get_record('local_districtupdate_review', ['id' => $reviewid], '*', MUST_EXIST);
   $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
-  $submitter = $DB->get_record('user', ['id' => $review->submittedby], '*', MUST_EXIST);
-  $body = $district->name.' submitted its annual staff review. Submitted by '.fullname($submitter).".\n\n";
-  foreach ($DB->get_records('local_districtupdate_roster', ['reviewid' => $reviewid], 'fullname') as $row) {
-   if ($row->status !== 'still') {
-    $body .= $row->fullname.' <'.$row->email.">\n".implode('; ', rules::actions($row->status, $row->targetcompany))."\n\n";
-   }
-  }
-  $body .= 'Preview and approve: '.(new \moodle_url('/local/districtupdate/approve.php', ['reviewid' => $reviewid]))->out(false);
+  $body = (new \moodle_url('/local/districtupdate/approve.php', ['reviewid' => $reviewid]))->out(false);
   foreach (get_admins() as $admin) {
    $sent = email_to_user($admin, \core_user::get_noreply_user(), 'District review submitted: '.$district->name, $body);
    self::audit(0, $admin->id, $sent ? 'admin_email_sent' : 'admin_email_failed', ['reviewid' => $reviewid]);

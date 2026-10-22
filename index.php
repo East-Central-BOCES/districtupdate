@@ -17,6 +17,7 @@ if (\local_districtupdate\service::manager()) {
 $rows = [];
 foreach ($reviews as $review) {
  if (!$review->districtid) { continue; }
+ if (!\local_districtupdate\service::manager() && \local_districtupdate\service::reviewer_access_expired($review)) { continue; }
  $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
  $cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
  $rows[] = [$cycle->reviewyear, s($district->name), userdate($cycle->duedate), $review->submittedat ? 'Submitted' : 'Awaiting review',

@@ -25,6 +25,7 @@ if (!$district) { echo $OUTPUT->notification('Assign these accounts through Mana
 if ($review->submittedat) {
  $submitter = $DB->get_record('user', ['id' => $review->submittedby]);
  echo $OUTPUT->notification('Submitted by '.($submitter ? fullname($submitter) : 'a previous reviewer').' on '.userdate($review->submittedat).'.', 'success');
+ echo html_writer::tag('p', 'District reviewer access expires on '.userdate(\local_districtupdate\service::reviewer_access_expires_at($review)).'. Administrators retain access.');
 } else {
  echo $OUTPUT->notification('Everyone starts as Still Employed. Change only people who left or moved. '
   .'For a transfer, select a different destination district. Save to share progress, or submit when the whole roster is reviewed. Due: '.userdate($cycle->duedate), 'info');

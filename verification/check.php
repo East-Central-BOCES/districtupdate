@@ -64,7 +64,9 @@ namespace {
  function has_capability(...$args) { global $MANAGER; return $MANAGER; }
  function require_capability(...$args) { if (!has_capability()) { throw new RuntimeException('No permission'); } }
  function is_siteadmin($id) { return $id === 99; }
- function get_admins() { return []; }
+ function get_admins() { global $ADMINS; return $ADMINS; }
+ class core_user { public static function get_noreply_user() { return (object)['id' => 0]; } }
+ function email_to_user($to, $from, $subject, $body) { global $EMAILS; $EMAILS[] = compact('to', 'subject', 'body'); return true; }
  function fullname($u) { return $u->firstname.' '.$u->lastname; }
  function userdate($date) { return (string)$date; }
  class moodle_url { public function __construct(...$args) {} public function out($escaped = true) { return 'https://example.invalid/local/districtupdate/'; } }
@@ -78,7 +80,8 @@ namespace {
  }
  function test(string $name, callable $f): void { global $count; fixture(); $f(); $count++; echo "PASS $name\n"; }
  function fixture(): void {
-  global $DB, $USER, $MANAGER, $CONFIG;
+  global $DB, $USER, $MANAGER, $CONFIG, $ADMINS, $EMAILS;
+  $ADMINS = []; $EMAILS = [];
   $DB = new MockDB(); $USER = (object)['id' => 10]; $MANAGER = false; $CONFIG = ['livewrites' => 0, 'excluded' => 'service-account'];
   foreach (['local_districtupdate_dist','local_districtupdate_access','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit','local_districtupdate_cycle','user'] as $table) { $DB->tables[$table] = []; }
   $DB->tables['local_districtupdate_dist'] = [1 => (object)['id' => 1, 'name' => 'North', 'domains' => 'north.org', 'aliases' => 'North Schools'],
@@ -120,6 +123,7 @@ namespace {
  require $base.'/classes/audit_retention.php';
  require __DIR__.'/retention_contract.php';
  require __DIR__.'/auth_contract.php';
+ require __DIR__.'/security_contract.php';
  require __DIR__.'/refresh_contract.php';
  require __DIR__.'/directory_contract.php';
  echo "$count checks passed. Stubbed Moodle/AD contracts only; no live server was contacted.\n";

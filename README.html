@@ -1,10 +1,10 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><title>ECBOCES District Update setup</title><style>body{font:16px/1.5 system-ui;max-width:1000px;margin:2em auto;padding:1em}pre{white-space:pre-wrap}</style><h1>ECBOCES District Update setup</h1><pre># ECBOCES District Update
 
-A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.6.** AD writes and automatic annual invitations default to off.
+A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.7.** AD writes and automatic annual invitations default to off.
 
 ## What districts see
 
-A signed-in, assigned reviewer sees only their district’s roster. Every account starts as **Still Employed**. Reviewers change exceptions to **No longer employed with an ECBOCES district** or **Moved to another ECBOCES district**. Choosing a transfer reveals a required dropdown of district names. Notes are optional. Multiple assigned people share the same roster, with attribution for changed responses and the final submitter. A stale save is rejected rather than overwriting another person’s work. Submitting freezes the roster; saving progress does not submit it or execute AD changes.
+A signed-in, assigned reviewer sees only their district’s roster. Every account starts as **Still Employed**. Reviewers change exceptions to **No longer employed with an ECBOCES district** or **Moved to another ECBOCES district**. Choosing a transfer reveals a required dropdown of district names. Notes are optional. Multiple assigned people share the same roster, with attribution for changed responses and the final submitter. A stale save is rejected rather than overwriting another person’s work. Submitting freezes the roster; saving progress does not submit it or execute AD changes. District reviewer access expires exactly 30 days after submission: the review is hidden from their dashboard and direct links are denied. Administrators retain access. Expiration applies to each review, including existing submissions, without deleting roster data or removing the district assignment used for future annual cycles. An administrator can reopen an unprocessed review to restore reviewer access; resubmission starts a new 30-day window.
 
 ## Approved actions
 
@@ -20,7 +20,7 @@ Company is changed in AD. Your existing LDAP mapping and sync carries it into Mo
 
 ## Install
 
-1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.6.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
+1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.7.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
 2. Complete the upgrade through **Site administration → Notifications**. No core file edits are needed.
 3. Open **Site administration → Plugins → Local plugins → District staff review** for settings, and **Manage district staff reviews** for districts and annual rosters. Direct dashboard: `/local/districtupdate/index.php`; management: `/local/districtupdate/manage.php`.
 4. Keep **Enable approved AD writes** and **Automatically start annual reviews** off while setting up and checking the roster.
@@ -50,7 +50,7 @@ Matching uses email domain first and Institution as the company fallback. Confli
 2. Resolve unmatched accounts and inspect each district roster. No email is sent just by creating a roster manually.
 3. Choose **Send invitations to all outstanding districts**, or send a district’s review link individually. All assigned reviewers receive the same district link. Notifications and delivery failures are logged.
 4. Reviewers save progress and then choose **Submit completed review**. A completed review may leave every account as Still Employed, as requested. They are explicitly confirming the entire roster.
-5. Site administrators receive an email summary listing proposed actions and a link to the approval page. The administration dashboard remains the authoritative source even if email delivery fails.
+5. Site administrators receive an email whose body contains only a link to the protected approval page; staff names, email addresses, notes, submitter names and proposed actions stay inside Moodle. The subject identifies the district. The administration dashboard remains the authoritative source even if email delivery fails.
 6. Under **Preview / process / audit**, changed accounts are checked by default. Uncheck exceptions or select an individual account, then choose **Preview selected accounts**.
 7. With AD writes enabled, the preview checks live AD identity and state. Blocked accounts are identified and skipped. Choose **Confirm and process these accounts** to execute the approved subset. Preview mode shows proposed actions without an AD connection or an execute control.
 8. Inspect results and the per-action audit. Reopening is allowed only before any processing attempt. Already completed accounts are not processed twice. A failed or interrupted account can be retried only through a fresh preview.
@@ -60,6 +60,10 @@ For very large batches, hosting gateway request limits may interrupt the browser
 ## Invitation POST verification
 
 Version 0.1.5 initializes the page context and metadata before POST actions, including invitations, reviewer submission and approval processing. `verification/moodle_invitation.php` exercises the actual management-page invitation POST using a synthetic reviewer and confirms delivery in local Mailpit. Its temporary database fixtures are rolled back. It refuses to run unless SMTP points to the local Mailpit catcher; it never resends invitations to configured district reviewers. Run with `php verification/moodle_invitation.php /path/to/moodle/config.php --test-site` only in the local test environment.
+
+## Reviewer access and notification checks
+
+Version 0.1.7 adds per-review access expiration and link-only admin notification bodies. `verification/moodle_security.php` checks recent and expired access using a real Moodle reviewer, dashboard visibility, retained data, administrator access, reopening, and the actual email body received in local Mailpit. All database fixtures roll back. It refuses to run with any other SMTP destination. Run `php verification/moodle_security.php /path/to/moodle/config.php --test-site` only in the local test environment.
 
 ## Audit log retention
 
@@ -133,7 +137,7 @@ Before production use, test on Moodle 5.1.1 with dedicated AD test accounts:
 7. Deny one delegated permission deliberately on a test account, verify partial results/audit, then repair permissions and retry. Test a nested group case is blocked.
 8. Verify invitations/reminders with test recipients, then turn on your chosen annual schedule.
 
-**Current verification boundary:** PHP lint, schema structure and 62 offline contracts pass. The plugin passed Moodle’s own ZIP validation and XMLDB parser, and version 0.1.5 deployed and completed its version update on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. The roster-refresh integration check also passed against the real Moodle database: adding users, preserving responses, freezing submitted reviews, reopening, removing inactive untouched entries and repeated refresh were verified inside a transaction, then all fixture data was rolled back. The real-database retention check also verified the exact 30-day cutoff and that manual assignments survive deletion of their audit records. Run `php verification/moodle_refresh.php /path/to/moodle/config.php --test-site` only against a test site to repeat it. Browser reviewer workflows, LDAP authorization, mail delivery beyond the local catcher and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
+**Current verification boundary:** PHP lint, schema structure and 70 offline contracts pass. The plugin passed Moodle’s own ZIP validation and XMLDB parser, and version 0.1.7 deployed and completed its version update on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. The roster-refresh integration check also passed against the real Moodle database: adding users, preserving responses, freezing submitted reviews, reopening, removing inactive untouched entries and repeated refresh were verified inside a transaction, then all fixture data was rolled back. The real-database retention check also verified the exact 30-day cutoff and that manual assignments survive deletion of their audit records. Run `php verification/moodle_refresh.php /path/to/moodle/config.php --test-site` only against a test site to repeat it. The 0.1.7 real-Moodle security check passed: recent reviewer access, expired direct access, dashboard hiding, administrator access, reopening and the link-only admin email received in local Mailpit were verified, with database fixtures rolled back. Full browser reviewer workflows, LDAP authorization, mail delivery beyond the local catcher and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
 
 ## References
 
