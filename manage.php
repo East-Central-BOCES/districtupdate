@@ -57,6 +57,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   \local_districtupdate\service::reopen(required_param('reviewid', PARAM_INT)); redirect($url, 'Review reopened.');
  } elseif ($action === 'assign') {
   \local_districtupdate\service::assign(required_param('rowid', PARAM_INT), required_param('destination', PARAM_INT)); redirect($url, 'Account assigned.');
+ } elseif ($action === 'archive' || $action === 'restore') {
+  $stats = \local_districtupdate\roster_admin::archive_district(required_param('districtid', PARAM_INT), $action === 'archive');
+  redirect($url, $action === 'archive' ? 'District removed from rostering. Draft entries removed: '.$stats['removed'].'; recorded or submitted entries preserved: '.$stats['preserved'].'.' : 'District restored. Refresh rosters to include eligible users again.');
  } elseif ($action === 'testldap') {
   $directory = new \local_districtupdate\directory(); unset($directory);
   redirect($url, 'LDAPS bind succeeded and all three groups were identified. No accounts were changed.');
@@ -76,14 +79,17 @@ foreach ($districts as $d) {
  foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $d->id]) as $a) {
   $u = $DB->get_record('user', ['id' => $a->userid]); if ($u) { $names[] = fullname($u).' ('.$u->email.'; '.$u->username.')'; }
  }
- $rows[] = [s($d->name), s($d->domains), s($d->aliases), s(implode('; ', $names)),
-  html_writer::link(new moodle_url($url, ['edit' => $d->id]), 'Edit')];
+ $archivebutton = local_districtupdate_formstart($url).local_districtupdate_hidden('districtid', $d->id)
+  .html_writer::tag('button', !empty($d->archived) ? 'Restore district' : 'Remove from rostering', ['type' => 'submit', 'name' => 'action', 'value' => !empty($d->archived) ? 'restore' : 'archive',
+   'class' => 'btn btn-outline-secondary btn-sm', 'data-confirm' => !empty($d->archived) ? 'Restore this district for rostering?' : 'Remove this district from rostering? Untouched draft entries will be removed; recorded responses and submitted history are preserved. Moodle and AD accounts are unchanged.']).'</form>';
+ $rows[] = [s($d->name).(!empty($d->archived) ? '<br><strong>Removed from rostering</strong>' : ''), s($d->domains), s($d->aliases), s(implode('; ', $names)),
+  html_writer::link(new moodle_url($url, ['edit' => $d->id]), 'Edit').$archivebutton];
 }
 echo $OUTPUT->heading('Districts and reviewers', 3);
 echo local_districtupdate_table(['District / AD Company', 'Email domains', 'Institution / District aliases', 'Reviewers', ''], $rows);
 echo $OUTPUT->heading($edit ? 'Edit district' : 'Add one district', 4);
 $districtform->display();
-$PAGE->requires->js_init_code("document.getElementById('id_name').addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); document.getElementById('id_domains').focus(); } });");
+$PAGE->requires->js_init_code("document.querySelectorAll('[data-confirm]').forEach(function(b) { b.addEventListener('click', function(e) { if (!window.confirm(b.dataset.confirm)) { e.preventDefault(); } }); }); document.getElementById('id_name').addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); document.getElementById('id_domains').focus(); } });");
 echo $OUTPUT->heading('Start an annual review', 3);
 echo local_districtupdate_formstart($url);
 echo '<label>Review year '.local_districtupdate_input('year', userdate(time(), '%Y'), 'number', ['min' => 2020, 'max' => 2100, 'required' => 'required']).'</label> ';
@@ -101,10 +107,12 @@ foreach ($DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC')
  foreach ($DB->get_records('local_districtupdate_review', ['cycleid' => $cycle->id], 'districtid') as $r) {
   if (!$r->districtid) { continue; }
   $count = $DB->count_records('local_districtupdate_roster', ['reviewid' => $r->id]);
+  $archived = !empty($districts[$r->districtid]->archived);
+  if ($archived && !$r->submittedat) { continue; }
   $controls = html_writer::link(new moodle_url('/local/districtupdate/review.php', ['id' => $r->id]), 'Roster');
   if ($r->submittedat) {
-   $controls .= ' · '.html_writer::link(new moodle_url('/local/districtupdate/approve.php', ['reviewid' => $r->id]), 'Preview / process / audit');
-   $controls .= local_districtupdate_formstart($url).local_districtupdate_hidden('reviewid', $r->id).local_districtupdate_button('Reopen review', 'action', 'reopen').'</form>';
+   if (!$archived) { $controls .= ' · '.html_writer::link(new moodle_url('/local/districtupdate/approve.php', ['reviewid' => $r->id]), 'Preview / process / audit');
+   $controls .= local_districtupdate_formstart($url).local_districtupdate_hidden('reviewid', $r->id).local_districtupdate_button('Reopen review', 'action', 'reopen').'</form>'; } else { $controls .= ' · Historical review (district removed)'; }
    $submitter = $DB->get_record('user', ['id' => $r->submittedby]);
    $status = 'Submitted by '.($submitter ? fullname($submitter) : 'previous reviewer').' on '.userdate($r->submittedat);
   } else {
@@ -116,16 +124,13 @@ foreach ($DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC')
  echo local_districtupdate_table(['District', 'Staff', 'Status', 'Last invitation', 'Actions'], $rows);
  $unmatched = $DB->get_record('local_districtupdate_review', ['cycleid' => $cycle->id, 'districtid' => 0]);
  if ($unmatched) {
-  $rows = [];
-  foreach ($DB->get_records('local_districtupdate_roster', ['reviewid' => $unmatched->id], 'fullname') as $r) {
-   $select = local_districtupdate_formstart($url).local_districtupdate_hidden('rowid', $r->id)
-    .html_writer::select([0 => 'Choose district…'] + array_map(fn($d) => $d->name, $districts), 'destination', 0, false)
-    .local_districtupdate_button('Assign', 'action', 'assign').'</form>';
-   $rows[] = [s($r->fullname), s($r->email), s($r->institution), $select];
-  }
-  if ($rows) { echo $OUTPUT->heading('Unmatched or conflicting district accounts — admin review required', 4);
-   echo local_districtupdate_table(['Name', 'Email', 'Institution', 'Assign district'], $rows); }
+  $unmatchedcount = $DB->count_records('local_districtupdate_roster', ['reviewid' => $unmatched->id]);
+  echo $OUTPUT->heading('Unmatched accounts — '.$unmatchedcount, 4);
+  echo html_writer::link(new moodle_url('/local/districtupdate/unmatched.php', ['cycleid' => $cycle->id]),
+   'Manage unmatched accounts in bulk', ['class' => 'btn btn-secondary']).' · '
+   .html_writer::link(new moodle_url('/local/districtupdate/excluded.php', ['cycleid' => $cycle->id]), 'Removed and ignored accounts');
  }
+
 }
 echo $OUTPUT->heading('Recent notifications and configuration activity', 3);
 echo html_writer::tag('p', 'Audit entries expire after '.\local_districtupdate\audit_retention::days().' days and are removed by Moodle’s daily cleanup task. Rosters and review responses are retained.');

@@ -55,7 +55,9 @@ if ($results !== null) {
  foreach ($results as $id => $result) { $rows[] = [s($processingbatch['rows'][$id]['row']->fullname), s($result)]; }
  echo local_districtupdate_table(['Staff member', 'Processing result'], $rows);
 }
-if ($batch) {
+if (!empty($district->archived)) {
+ echo $OUTPUT->notification('This district has been removed from rostering. Review history is retained. Restore the district before processing any directory changes.', 'info');
+} elseif ($batch) {
  echo $OUTPUT->heading('Action preview', 3);
  echo $OUTPUT->notification($batch['live'] ? 'Current AD state was checked. Accounts with a blocked preview will be skipped. '
   .'Confirming applies the listed changes to the selected accounts. Partial failures are recorded; successful earlier actions remain applied.'

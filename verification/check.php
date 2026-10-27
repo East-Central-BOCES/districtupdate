@@ -69,7 +69,9 @@ namespace {
    $auths = array_filter($params, fn($key) => str_starts_with($key, 'drauth'), ARRAY_FILTER_USE_KEY);
    return new MockRecords(array_filter($this->tables[$table] ?? [], fn($u) => in_array($u->auth, array_values($auths), true)
     && !$u->deleted && !$u->suspended && $u->id > 1
-    && $this->record_exists('cohort_members', ['cohortid' => $params['drcohort'], 'userid' => $u->id])));
+    && $this->record_exists('cohort_members', ['cohortid' => $params['drcohort'], 'userid' => $u->id])
+    && !$this->record_exists('local_districtupdate_skip', ['cycleid' => 0, 'userid' => $u->id])
+    && !$this->record_exists('local_districtupdate_skip', ['cycleid' => $params['drskipcycle'], 'userid' => $u->id])));
   }
  }
  function get_config($component, $key = null) { global $CONFIG; return $key === null ? (object)$CONFIG : ($CONFIG[$key] ?? false); }
@@ -88,7 +90,7 @@ namespace {
  function userdate($date) { return (string)$date; }
  class moodle_url { public function __construct(...$args) {} public function out($escaped = true) { return 'https://example.invalid/local/districtupdate/'; } }
  $base = dirname(__DIR__);
- require $base.'/classes/rules.php'; require $base.'/classes/email_templates.php'; require $base.'/classes/notification_addresses.php'; require $base.'/classes/service.php'; require $base.'/classes/reviewers.php'; require $base.'/classes/audit_display.php'; require $base.'/classes/directory.php'; require $base.'/classes/processor.php';
+ require $base.'/classes/rules.php'; require $base.'/classes/email_templates.php'; require $base.'/classes/notification_addresses.php'; require $base.'/classes/service.php'; require $base.'/classes/reviewers.php'; require $base.'/classes/audit_display.php'; require $base.'/classes/roster_admin.php'; require $base.'/classes/directory.php'; require $base.'/classes/processor.php';
  $count = 0;
  function check($condition, string $message = 'Assertion failed'): void { if (!$condition) { throw new RuntimeException($message); } }
  function expect_error(callable $f, string $part): void {
@@ -100,7 +102,7 @@ namespace {
   global $DB, $USER, $MANAGER, $CONFIG, $ADMINS, $EMAILS;
   $ADMINS = []; $EMAILS = [];
   $DB = new MockDB(); $USER = (object)['id' => 10]; $MANAGER = false; $CONFIG = ['livewrites' => 0, 'excluded' => 'service-account'];
-  foreach (['local_districtupdate_dist','local_districtupdate_access','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit','local_districtupdate_cycle','user','user_info_field','user_info_data','cohort','cohort_members'] as $table) { $DB->tables[$table] = []; }
+  foreach (['local_districtupdate_dist','local_districtupdate_access','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit','local_districtupdate_cycle','user','user_info_field','user_info_data','cohort','cohort_members','local_districtupdate_skip'] as $table) { $DB->tables[$table] = []; }
   $DB->tables['cohort'][1] = (object)['id' => 1, 'name' => 'ECBOCES_Members', 'idnumber' => 'ECBOCES_Members'];
   cohort_member_fixture(20);
   $DB->tables['local_districtupdate_dist'] = [1 => (object)['id' => 1, 'name' => 'North', 'domains' => 'north.org', 'aliases' => 'North Schools'],
@@ -148,6 +150,7 @@ namespace {
  require __DIR__.'/auth_contract.php';
  require __DIR__.'/profile_contract.php';
  require __DIR__.'/cohort_contract.php';
+ require __DIR__.'/bulk_contract.php';
  require __DIR__.'/reviewer_contract.php';
  require __DIR__.'/picker_contract.php';
  require __DIR__.'/security_contract.php';

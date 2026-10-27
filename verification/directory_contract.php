@@ -184,4 +184,17 @@ namespace {
   expect_error(fn() => \local_districtupdate\processor::process($b), 'Preview expired');
  });
 
+ test('globally ignored users cannot be processed in AD', function() {
+  global $DB, $AD; $r = ad_fixture();
+  $DB->insert_record('local_districtupdate_skip', (object)['cycleid'=>0,'userid'=>$r->userid,'actorid'=>99,'timecreated'=>time()]);
+  $d = new \local_districtupdate\directory(); expect_error(fn() => $d->state($r), 'ignored for rostering');
+  check($AD['writes'] === 0);
+ });
+ test('archived transfer destination blocks all AD changes', function() {
+  global $DB, $AD; $r = ad_fixture('moved'); $r->destination = 2;
+  $DB->tables['local_districtupdate_dist'][2]->archived = 1;
+  $d = new \local_districtupdate\directory(); expect_error(fn() => $d->apply($r, $d->state($r)), 'destination district');
+  check($AD['writes'] === 0);
+ });
+
 }

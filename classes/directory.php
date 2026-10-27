@@ -82,6 +82,7 @@ final class directory {
       || is_siteadmin($user->id) || service::excluded($user->username)) {
    service::fail('Moodle account identity, authentication or exclusion status changed. Review this account manually.');
   }
+  if ($DB->record_exists('local_districtupdate_skip', ['cycleid' => 0, 'userid' => $row->userid])) { service::fail('This user is ignored for rostering. Restore the user before processing.'); }
   $attr = $this->config->identityattribute ?? 'samaccountname';
   $filter = '(&(objectCategory=person)(objectClass=user)('.$attr.'='.ldap_escape($row->username, '', LDAP_ESCAPE_FILTER).'))';
   $matches = [];
@@ -148,6 +149,7 @@ final class directory {
   return hash('sha256', json_encode($values));
  }
  public function validate(object $row, array $state): void {
+  if ($row->status === 'moved' && $row->destination && !service::district_active((int)$row->destination)) { service::fail('The destination district has been removed from rostering.'); }
   rules::actions($row->status, $row->targetcompany);
   foreach ($row->status === 'left' ? ['zoom', 'members'] : ['zoom'] as $name) {
    $group = $state['groups'][$name];

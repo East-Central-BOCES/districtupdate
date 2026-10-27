@@ -7,6 +7,7 @@ final class processor {
   global $DB, $USER;
   require_capability('local/districtupdate:manage', \context_system::instance());
   $review = service::access($reviewid);
+  if (!service::district_active((int)$review->districtid)) { service::fail('Restore this district before directory processing.'); }
   if (!$review->submittedat || !$review->districtid) { service::fail('Only submitted district reviews can be processed.'); }
   $ids = array_values(array_unique(array_map('intval', $ids)));
   if (!$ids) { service::fail('Select at least one account.'); }
@@ -36,6 +37,7 @@ final class processor {
   $lock = service::lock('review:'.$batch['reviewid']);
   try {
    $review = service::access($batch['reviewid']);
+   if (!service::district_active((int)$review->districtid)) { service::fail('Restore this district before directory processing.'); }
    if (!$review->submittedat || (int)$review->revision !== (int)$batch['revision']) { service::fail('Review changed. Generate a fresh preview.'); }
    $directory = new directory(); $results = [];
    foreach ($batch['rows'] as $id => $item) {

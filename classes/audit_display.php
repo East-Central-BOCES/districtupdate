@@ -25,7 +25,9 @@ final class audit_display {
    'admin_email_sent' => 'Admin notification sent', 'admin_email_failed' => 'Admin notification failed',
    'processing_started' => 'Directory processing started', 'processing_failed' => 'Directory processing failed',
    'action_started' => 'Directory action started', 'action_succeeded' => 'Directory action completed',
-   'action_failed' => 'Directory action failed', 'verified' => 'Changes verified'];
+   'action_failed' => 'Directory action failed', 'roster_user_removed' => 'Removed from this year', 'roster_user_ignored' => 'Ignored for rostering',
+   'roster_user_restored' => 'Roster exclusion restored', 'district_archived' => 'District removed from rostering',
+   'district_restored' => 'District restored', 'verified' => 'Changes verified'];
   $label = $labels[$event] ?? 'Review activity';
   $d = json_decode($detail, true);
   if (!is_array($d)) { return [$label, ['Details unavailable.']]; }
@@ -50,7 +52,14 @@ final class audit_display {
     break;
    case 'district_assigned': $lines[] = 'Assigned to '.$this->district((int)($d['districtid'] ?? 0)).'.'; break;
    case 'roster_account_added': $lines[] = 'Added to '.$this->review_district((int)($d['reviewid'] ?? 0)).' as Still Employed.'; break;
-   case 'roster_account_removed': $lines[] = 'No longer eligible; removed before any reviewer response.'; break;
+   case 'roster_account_removed': $lines[] = $d['reason'] ?? 'No longer eligible; removed before any reviewer response.'; break;
+   case 'roster_user_removed': $lines[] = 'Excluded from this annual roster. Moodle and AD accounts unchanged.'; break;
+   case 'roster_user_ignored': $lines[] = 'Excluded from current and future rosters until restored.'; break;
+   case 'roster_user_restored': $lines[] = 'Exclusion removed. Refresh rosters to include eligible users again.'; break;
+   case 'district_archived': case 'district_restored':
+    $lines[] = $this->district((int)($d['districtid'] ?? 0));
+    if ($event === 'district_archived') { $lines[] = 'Untouched draft entries removed: '.(int)($d['summary']['removed'] ?? 0).'; historical responses preserved: '.(int)($d['summary']['preserved'] ?? 0).'.'; }
+    break;
    case 'district_configured':
     $lines[] = $this->district((int)($d['districtid'] ?? 0)).' — '.(int)($d['reviewercount'] ?? 0).' assigned reviewer(s).'; break;
    case 'cycle_created': $lines[] = 'Staff review for '.(int)($d['year'] ?? 0).'.'; break;

@@ -53,6 +53,10 @@ try {
  $html = du_render_approval($reviewid);
  du_display_assert(str_contains($html, 'All requested directory changes have been completed.') && !str_contains($html, 'Preview selected accounts'), 'Completed review showed a pending preview action.');
  du_display_assert($DB->get_field('local_districtupdate_audit', 'detail', ['id' => $log->id]) === $log->detail, 'Rendering altered stored evidence.');
+ $DB->set_field('local_districtupdate_dist', 'archived', 1, ['id' => $districtid]);
+ $archivedhtml = du_render_approval($reviewid);
+ du_display_assert(str_contains($archivedhtml, 'removed from rostering') && !str_contains($archivedhtml, 'Preview selected accounts'), 'Archived district exposed processing controls.');
+ $DB->set_field('local_districtupdate_dist', 'archived', 0, ['id' => $districtid]);
  $DB->delete_records('local_districtupdate_roster', ['id' => $rowid]);
  du_display_assert(str_contains(du_render_approval($reviewid), 'contains no staff accounts'), 'Empty roster was confused with all-Still-Employed.');
  echo "PASS: pending and completed changes render correctly; notes are escaped; raw evidence stays unchanged; empty roster is distinguished.\n";

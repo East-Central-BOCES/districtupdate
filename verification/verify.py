@@ -19,7 +19,7 @@ for capability in re.findall(r"['\"](local/[^'\"]+:[^'\"]+)['\"]\s*=>", (root/'d
     labelkey = capability.split('/', 1)[1]
     assert labelkey in langkeys, f"Missing capability language label: {labelkey}"
 
-expected = {'local_districtupdate_dist', 'local_districtupdate_access', 'local_districtupdate_cycle', 'local_districtupdate_review', 'local_districtupdate_roster', 'local_districtupdate_audit'}
+expected = {'local_districtupdate_dist', 'local_districtupdate_access', 'local_districtupdate_cycle', 'local_districtupdate_review', 'local_districtupdate_roster', 'local_districtupdate_audit', 'local_districtupdate_skip'}
 tables = xml.findall('./TABLES/TABLE')
 assert {t.attrib['NAME'] for t in tables} == expected
 fields = {}
@@ -37,7 +37,7 @@ for table in tables:
     for index in table.findall('./INDEXES/INDEX'):
         assert set(index.attrib['FIELDS'].replace(' ', '').split(',')) <= set(cols)
 assert next(f for t in tables if t.attrib['NAME'] == 'local_districtupdate_roster' for f in t.findall('./FIELDS/FIELD') if f.attrib['NAME'] == 'status').attrib['DEFAULT'] == 'still'
-print('XMLDB structural checks passed: 6 tables', flush=True)
+print('XMLDB structural checks passed: 7 tables', flush=True)
 pickersource = (root/'amd/src/reviewer_picker.js').read_text()
 assert (root/'amd/build/reviewer_picker.min.js').read_text() == pickersource.replace(
     'define([', "define('local_districtupdate/reviewer_picker', [", 1
@@ -46,7 +46,7 @@ assert (root/'amd/build/reviewer_picker.min.js').read_text() == pickersource.rep
 references = set()
 for path in files:
     if 'verification' not in path.parts:
-        references.update(re.findall(r'local_districtupdate_(?:dist|access|cycle|review|roster|audit)\b', path.read_text()))
+        references.update(re.findall(r'local_districtupdate_(?:dist|access|cycle|review|roster|audit|skip)\b', path.read_text()))
 assert references == expected
 assert "$plugin->requires = 2025100601" in (root/'version.php').read_text()
 assert "'livewrites'" in (root/'classes/directory.php').read_text()

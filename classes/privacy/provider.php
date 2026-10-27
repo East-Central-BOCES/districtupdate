@@ -12,6 +12,7 @@ final class provider implements \core_privacy\local\metadata\provider,
  \core_privacy\local\request\plugin\provider, \core_privacy\local\request\core_userlist_provider {
  private const FIELDS = [
   'local_districtupdate_access' => ['userid'],
+  'local_districtupdate_skip' => ['userid', 'actorid'],
   'local_districtupdate_review' => ['submittedby'],
   'local_districtupdate_roster' => ['userid', 'modifiedby'],
   'local_districtupdate_audit' => ['userid', 'actorid'],
@@ -19,6 +20,7 @@ final class provider implements \core_privacy\local\metadata\provider,
  public static function get_metadata(collection $collection): collection {
   $fields = [
    'local_districtupdate_access' => ['districtid','userid'],
+   'local_districtupdate_skip' => ['userid','cycleid','actorid','timecreated'],
    'local_districtupdate_review' => ['cycleid','districtid','submittedby','submittedat','lastsent'],
    'local_districtupdate_roster' => ['reviewid','userid','username','fullname','email','institution','status','destination','targetcompany','note','modifiedby','modifiedat','processstate','manualassignment'],
    'local_districtupdate_audit' => ['rosterid','userid','actorid','event','detail','timecreated'],
@@ -61,7 +63,7 @@ final class provider implements \core_privacy\local\metadata\provider,
   try {
    foreach ($DB->get_records('local_districtupdate_review', null, 'id') as $review) { $locks[] = \local_districtupdate\service::lock('review:'.$review->id); }
    $tx = $DB->start_delegated_transaction();
-   foreach (['local_districtupdate_audit', 'local_districtupdate_roster', 'local_districtupdate_access', 'local_districtupdate_review', 'local_districtupdate_cycle', 'local_districtupdate_dist'] as $table) { $DB->delete_records($table); }
+   foreach (['local_districtupdate_skip', 'local_districtupdate_audit', 'local_districtupdate_roster', 'local_districtupdate_access', 'local_districtupdate_review', 'local_districtupdate_cycle', 'local_districtupdate_dist'] as $table) { $DB->delete_records($table); }
    $tx->allow_commit();
   } finally { foreach ($locks as $lock) { $lock->release(); } }
  }
@@ -78,6 +80,8 @@ final class provider implements \core_privacy\local\metadata\provider,
    // Match the same locks used by reviewer saves and directory processing, and invalidate frozen previews.
    foreach ($DB->get_records('local_districtupdate_review', null, 'id') as $review) { $locks[] = \local_districtupdate\service::lock('review:'.$review->id); }
    $tx = $DB->start_delegated_transaction();
+   $DB->delete_records('local_districtupdate_skip', ['userid' => $userid]);
+   $DB->set_field('local_districtupdate_skip', 'actorid', 0, ['actorid' => $userid]);
    $DB->delete_records('local_districtupdate_access', ['userid' => $userid]);
    $DB->delete_records('local_districtupdate_audit', ['userid' => $userid]);
    $DB->set_field('local_districtupdate_audit', 'detail', '{}', ['actorid' => $userid]);

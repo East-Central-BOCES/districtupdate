@@ -39,10 +39,15 @@ final class service {
     ['districtid' => $review->districtid, 'userid' => $USER->id]))) {
    self::fail('You are not assigned to this district review.');
   }
+  if (!self::manager() && $review->districtid && !self::district_active((int)$review->districtid)) { self::fail('This district has been removed from rostering.'); }
   if (!self::manager() && self::reviewer_access_expired($review)) {
    self::fail('Reviewer access expired 30 days after submission. Contact an administrator if you need this review reopened.');
   }
   return $review;
+ }
+ public static function district_active(int $id): bool {
+  global $DB;
+  return empty($DB->get_record('local_districtupdate_dist', ['id' => $id], '*', MUST_EXIST)->archived);
  }
  /** Expiration is per review; district assignments remain available for the next annual cycle. */
  public static function reviewer_access_expires_at(object $review): int {
@@ -79,7 +84,7 @@ final class service {
   return (int)reset($matches)->id;
  }
  /** Shared source for initial snapshots and refresh, restricted to the ECBOCES_Members Moodle cohort. */
- public static function eligible_users(): \Generator {
+ public static function eligible_users(int $cycleid = 0): \Generator {
   global $DB;
   $methods = self::auth_methods();
   if (!$methods) { return; }
@@ -87,13 +92,18 @@ final class service {
   $profiledistricts = self::profile_districts();
   [$authsql, $params] = $DB->get_in_or_equal($methods, SQL_PARAMS_NAMED, 'drauth');
   $params['drcohort'] = $cohortid;
+  $params['drskipcycle'] = $cycleid;
+  $districts = $DB->get_records('local_districtupdate_dist');
   $users = $DB->get_recordset_select('user', 'auth '.$authsql.' AND deleted = 0 AND suspended = 0 AND id > 1'
-   .' AND id IN (SELECT userid FROM {cohort_members} WHERE cohortid = :drcohort)',
+   .' AND id IN (SELECT userid FROM {cohort_members} WHERE cohortid = :drcohort)'
+   .' AND id NOT IN (SELECT userid FROM {local_districtupdate_skip} WHERE cycleid = 0 OR cycleid = :drskipcycle)',
    $params, 'id', 'id, username, firstname, lastname, email, institution');
   try {
    foreach ($users as $user) {
     if (!is_siteadmin($user->id) && !self::excluded($user->username)) {
      $user->profiledistrict = (string)($profiledistricts[$user->id] ?? '');
+     $matched = rules::district($user->email, $user->institution, $districts, $user->profiledistrict);
+     if ($matched && !empty($districts[$matched]->archived)) { continue; }
      yield $user;
     }
    }
@@ -122,16 +132,16 @@ final class service {
    if ($year < 2020 || $year > 2100 || $duedate <= time()) { self::fail('Choose a valid year and a future due date.'); }
    if ($DB->record_exists('local_districtupdate_cycle', ['reviewyear' => $year])) { self::fail('A review already exists for this year.'); }
    $districts = $DB->get_records('local_districtupdate_dist', null, 'name');
-   if (!$districts) { self::fail('Add districts and reviewers first.'); }
+   if (!array_filter($districts, fn($d) => empty($d->archived))) { self::fail('Add an active district and reviewers first.'); }
    self::roster_cohort_id();
    $tx = $DB->start_delegated_transaction();
    $cycleid = $DB->insert_record('local_districtupdate_cycle', (object)['reviewyear' => $year, 'duedate' => $duedate, 'timecreated' => time()]);
    $reviews = [];
-   foreach (array_merge([0], array_keys($districts)) as $districtid) {
+   foreach (array_merge([0], array_keys(array_filter($districts, fn($d) => empty($d->archived)))) as $districtid) {
     $reviews[$districtid] = $DB->insert_record('local_districtupdate_review', (object)['cycleid' => $cycleid,
      'districtid' => $districtid, 'revision' => 1, 'submittedby' => 0, 'submittedat' => 0, 'lastsent' => 0]);
    }
-   foreach (self::eligible_users() as $user) {
+   foreach (self::eligible_users($cycleid) as $user) {
      $districtid = rules::district($user->email, $user->institution, $districts, $user->profiledistrict);
      $DB->insert_record('local_districtupdate_roster', (object)['reviewid' => $reviews[$districtid], 'userid' => $user->id,
       'username' => $user->username, 'fullname' => $user->firstname.' '.$user->lastname, 'email' => $user->email,
@@ -169,10 +179,10 @@ final class service {
    }
    $stats['locked'] = count(array_filter($frozen));
    $active = [];
-   foreach (self::eligible_users() as $user) { $active[$user->id] = $user; }
+   foreach (self::eligible_users($cycleid) as $user) { $active[$user->id] = $user; }
    $tx = $DB->start_delegated_transaction();
    // Districts added after the annual snapshot can now receive an open review, without invitations.
-   foreach (array_merge([0], array_keys($districts)) as $districtid) {
+   foreach (array_merge([0], array_keys(array_filter($districts, fn($d) => empty($d->archived)))) as $districtid) {
     if (!isset($bydistrict[$districtid])) {
      $review = (object)['cycleid' => $cycleid, 'districtid' => $districtid, 'revision' => 1,
       'submittedby' => 0, 'submittedat' => 0, 'lastsent' => 0];
@@ -243,11 +253,12 @@ final class service {
    if ($review->submittedat) { self::fail('This review is already submitted. Ask an administrator to reopen it.'); }
    if ((int)$review->revision !== $revision) { self::fail('Another reviewer saved changes. Reload the page before editing again.'); }
    if (!$review->districtid) { self::fail('Assign unmatched accounts to a district before reviewing.'); }
+   if (!self::district_active((int)$review->districtid)) { self::fail('Restore this district before editing its review.'); }
    $roster = $DB->get_records('local_districtupdate_roster', ['reviewid' => $reviewid], 'fullname');
    if (count($responses) !== count($roster) || array_diff(array_keys($roster), array_keys($responses))) {
     self::fail('The roster was incomplete. Reload the page. For large rosters increase PHP max_input_vars.');
    }
-   $districts = $DB->get_records('local_districtupdate_dist');
+   $districts = array_filter($DB->get_records('local_districtupdate_dist'), fn($d) => empty($d->archived));
    $changes = [];
    foreach ($roster as $row) {
     $input = $responses[$row->id];
@@ -326,7 +337,7 @@ final class service {
  public static function invite(int $reviewid): void {
   global $DB;
   $review = $DB->get_record('local_districtupdate_review', ['id' => $reviewid], '*', MUST_EXIST);
-  if (!$review->districtid || $review->submittedat) { return; }
+  if (!$review->districtid || $review->submittedat || !self::district_active((int)$review->districtid)) { return; }
   $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
   $cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
   $url = (new \moodle_url('/local/districtupdate/review.php', ['id' => $reviewid]))->out(false);
@@ -345,6 +356,7 @@ final class service {
   $lock = self::lock('review:'.$reviewid);
   try {
    $review = self::access($reviewid);
+   if ($review->districtid && !self::district_active((int)$review->districtid)) { self::fail('Restore this district before reopening its review.'); }
    if ($DB->record_exists_select('local_districtupdate_roster', "reviewid = :id AND processstate <> 'pending'", ['id' => $reviewid])) {
     self::fail('Directory processing was attempted. This submitted review cannot be reopened.');
    }
@@ -357,20 +369,6 @@ final class service {
   global $DB;
   $row = $DB->get_record('local_districtupdate_roster', ['id' => $rowid], '*', MUST_EXIST);
   $source = $DB->get_record('local_districtupdate_review', ['id' => $row->reviewid], '*', MUST_EXIST);
-  if ($source->districtid) { self::fail('Only unmatched accounts can be assigned here.'); }
-  $target = $DB->get_record('local_districtupdate_review', ['cycleid' => $source->cycleid, 'districtid' => $districtid], '*', MUST_EXIST);
-  if (!$districtid) { self::fail('Select a district.'); }
-  $lock = self::lock('review:'.$target->id);
-  try {
-   $target = $DB->get_record('local_districtupdate_review', ['id' => $target->id], '*', MUST_EXIST);
-   $row = $DB->get_record('local_districtupdate_roster', ['id' => $rowid], '*', MUST_EXIST);
-   if ($target->submittedat || (int)$row->reviewid !== (int)$source->id) { self::fail('Assignment changed or target review is submitted.'); }
-   $tx = $DB->start_delegated_transaction();
-   $DB->set_field('local_districtupdate_roster', 'reviewid', $target->id, ['id' => $rowid]);
-   $DB->set_field('local_districtupdate_roster', 'manualassignment', 1, ['id' => $rowid]);
-   $DB->set_field('local_districtupdate_review', 'revision', $target->revision + 1, ['id' => $target->id]);
-   self::audit($rowid, $row->userid, 'district_assigned', ['districtid' => $districtid]);
-   $tx->allow_commit();
-  } finally { $lock->release(); }
+  roster_admin::apply((int)$source->id, (int)$source->revision, 'assign', [$rowid => $districtid], []);
  }
 }
