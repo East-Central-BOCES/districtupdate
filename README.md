@@ -1,6 +1,6 @@
 # ECBOCES District Update
 
-A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.12.** AD writes and automatic annual invitations default to off.
+A Moodle **5.1.1** local plugin for annual district staff reviews and administrator-approved Active Directory changes. Component: `local_districtupdate`. **Pilot build, version 0.1.13.** AD writes and automatic annual invitations default to off.
 
 ## What districts see
 
@@ -20,7 +20,7 @@ Company is changed in AD. Your existing LDAP mapping and sync carries it into Mo
 
 ## Install
 
-1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.12.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
+1. Use a Moodle 5.1.1 staging site for the pilot. Install `local_districtupdate-0.1.13.zip` through **Site administration → Plugins → Install plugins**, or place the plugin files in your Moodle **`public/local/districtupdate/`** folder. The folder must be `districtupdate` and contain `version.php` directly. Moodle 5.1 moved web code under `public`; use your actual Moodle web-code root.
 2. Complete the upgrade through **Site administration → Notifications**. No core file edits are needed.
 3. Open **Site administration → Plugins → Local plugins → District staff review** for settings, and **Manage district staff reviews** for districts and annual rosters. Direct dashboard: `/local/districtupdate/index.php`; management: `/local/districtupdate/manage.php`.
 4. Keep **Enable approved AD writes** and **Automatically start annual reviews** off while setting up and checking the roster.
@@ -113,7 +113,16 @@ The Moodle web server needs PHP’s LDAP extension, network access to the domain
 Configure:
 
 - LDAPS server URL.
-- User search base DN, including relevant child OUs.
+- **AD user search base DNs:** one full OU/container DN per line, on the configured domain. Existing single-base values continue to work. Each base includes its child OUs, so a shared parent can be sufficient. Keep commas inside each DN; commas and semicolons do not separate bases.
+
+Example:
+
+```text
+OU=Staff,DC=example,DC=org
+OU=District Users,DC=example,DC=org
+```
+
+The real Moodle settings API was verified to preserve two full DNs on separate lines, with temporary values rolled back. Multi-base directory checks use simulated LDAP responses; live AD authorization remains a pilot check. Version 0.1.13 searches every configured base before accepting an account. Overlapping bases deduplicate by AD object GUID; different matching accounts, incomplete/failed searches, or inconsistent overlapping results block processing. Changing the base list invalidates an existing approval preview. The bind account must be able to read all bases. This controls AD identity lookup for preview/processing, not Moodle LDAP synchronization or the cohort-filtered roster source.
 - A dedicated delegated service account bind DN.
 - The full distinguished names of the **ECBOCES_Members**, **Zoom**, and **Basic** groups. Group names alone are not sufficient.
 - The AD identity attribute that exactly matches Moodle usernames: `sAMAccountName` by default, or `userPrincipalName`.
@@ -157,7 +166,7 @@ Before production use, test on Moodle 5.1.1 with dedicated AD test accounts:
 7. Deny one delegated permission deliberately on a test account, verify partial results/audit, then repair permissions and retry. Test a nested group case is blocked.
 8. Verify invitations/reminders with test recipients, then turn on your chosen annual schedule.
 
-**Current verification boundary:** PHP lint, schema structure and 98 offline contracts pass. The plugin passed Moodle’s own ZIP validation and XMLDB parser, and version 0.1.12 deployed and completed its version update on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. The roster-refresh integration check also passed against the real Moodle database: adding users, preserving responses, freezing submitted reviews, reopening, removing inactive untouched entries and repeated refresh were verified inside a transaction, then all fixture data was rolled back. The real-database cohort check verified exclusion of nonmembers, inclusion after joining ECBOCES_Members, and removal of untouched entries after leaving; cohort and membership fixtures rolled back. The real-database custom-profile check verified District-only matching with blank Institution and an unknown email domain, and rematching after the profile value changes; all temporary field definitions, values and user records were rolled back. The real-database retention check also verified the exact 30-day cutoff and that manual assignments survive deletion of their audit records. Run `php verification/moodle_refresh.php /path/to/moodle/config.php --test-site` only against a test site to repeat it. The 0.1.8 real-Moodle security check passed: recent reviewer access, expired direct access, dashboard hiding, administrator access, reopening and the link-only admin email received in local Mailpit were verified, with database fixtures rolled back. Full browser reviewer workflows, LDAP authorization, mail delivery beyond the local catcher and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
+**Current verification boundary:** PHP lint, schema structure and 105 offline contracts pass. The plugin passed Moodle’s own ZIP validation and XMLDB parser, and version 0.1.13 deployed and completed its version update on the local Moodle 5.1.1+ test site (Build: 20260205; core version 2025100601.11). All six plugin tables were verified, the management page rendered in a CLI request, and AD writes and automatic annual reviews remained disabled. The roster-refresh integration check also passed against the real Moodle database: adding users, preserving responses, freezing submitted reviews, reopening, removing inactive untouched entries and repeated refresh were verified inside a transaction, then all fixture data was rolled back. The real-database cohort check verified exclusion of nonmembers, inclusion after joining ECBOCES_Members, and removal of untouched entries after leaving; cohort and membership fixtures rolled back. The real-database custom-profile check verified District-only matching with blank Institution and an unknown email domain, and rematching after the profile value changes; all temporary field definitions, values and user records were rolled back. The real-database retention check also verified the exact 30-day cutoff and that manual assignments survive deletion of their audit records. Run `php verification/moodle_refresh.php /path/to/moodle/config.php --test-site` only against a test site to repeat it. The 0.1.8 real-Moodle security check passed: recent reviewer access, expired direct access, dashboard hiding, administrator access, reopening and the link-only admin email received in local Mailpit were verified, with database fixtures rolled back. Full browser reviewer workflows, LDAP authorization, mail delivery beyond the local catcher and downstream sync still require the pilot checks above. This is a pilot package, not a production validation claim.
 
 ## References
 

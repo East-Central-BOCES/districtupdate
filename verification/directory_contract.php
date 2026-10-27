@@ -10,6 +10,7 @@ namespace local_districtupdate {
  function ldap_errno(...$args) { global $AD; return $AD['error'] ?? 0; }
  function ldap_escape($value, ...$args) { return addcslashes($value, '\\()*'); }
  function ldap_get_entries($connection, $result) { return $result; }
+ function ldap_parse_result($connection, $result, &$code) { $code = $result['error'] ?? 0; return true; }
  function ldap_count_entries($connection, $result) { return $result['count']; }
  function ldap_read($connection, $dn, $filter, $attributes) {
   global $AD;
@@ -25,6 +26,8 @@ namespace local_districtupdate {
  function ldap_search($connection, $base, $filter, $attributes, ...$rest) {
   global $AD;
   if (str_contains($filter, 'objectCategory=person')) {
+   $AD['usersearches'][] = $base;
+   if (array_key_exists($base, $AD['userresults'] ?? [])) { return $AD['userresults'][$base]; }
    return ['count' => 1, 0 => ['dn' => 'CN=Test Person,DC=test,DC=invalid', 'objectguid' => [$AD['guid']], 'samaccountname' => ['person'],
     'mail' => [$AD['email']], 'company' => [$AD['company']], 'physicaldeliveryofficename' => [$AD['office']],
     'primarygroupid' => ['513'], 'objectsid' => ['SID'.pack('V', 2000)], 'admincount' => [$AD['admincount']]]];
@@ -135,4 +138,50 @@ namespace {
   $b = \local_districtupdate\processor::preview(1, [1]); $CONFIG['authmethods'] = 'ldap,ldapdistrict';
   expect_error(fn() => \local_districtupdate\processor::process($b), 'settings changed');
  });
+ test('multiple user bases preserve full DNs and deduplicate repeated lines', function() {
+  $bases = \local_districtupdate\directory::user_bases(" OU=Staff,DC=test,DC=invalid\r\n\nOU=Teachers,DC=test,DC=invalid\nOU=staff,DC=test,DC=invalid ");
+  check(count($bases) === 2 && $bases[1] === 'OU=Teachers,DC=test,DC=invalid');
+  expect_error(fn() => \local_districtupdate\directory::user_bases(" \n "), 'at least one');
+ });
+ test('account can be found only in the second OU', function() {
+  global $CONFIG, $AD; $r = ad_fixture(); $CONFIG['userbase'] = "OU=First,DC=test,DC=invalid\nOU=Second,DC=test,DC=invalid";
+  $AD['userresults']['OU=First,DC=test,DC=invalid'] = ['count' => 0];
+  $d = new \local_districtupdate\directory(); $state = $d->state($r);
+  check($state['email'] === $r->email && count($AD['usersearches']) === 2);
+ });
+ test('overlapping bases deduplicate the same AD object and permit verified changes', function() {
+  global $CONFIG, $AD; $r = ad_fixture(); $CONFIG['userbase'] = "DC=test,DC=invalid\nOU=Staff,DC=test,DC=invalid";
+  $d = new \local_districtupdate\directory(); $d->apply($r, $d->state($r));
+  check($AD['writes'] === 4);
+ });
+ test('different accounts across OUs block all writes', function() {
+  global $CONFIG, $AD; $r = ad_fixture();
+  $other = \local_districtupdate\ldap_search(null, 'original', '(objectCategory=person)', []);
+  $other[0]['objectguid'] = ['other-guid'];
+  $CONFIG['userbase'] = "OU=First,DC=test,DC=invalid\nOU=Second,DC=test,DC=invalid";
+  $AD['userresults']['OU=Second,DC=test,DC=invalid'] = $other;
+  $d = new \local_districtupdate\directory();
+  expect_error(fn() => $d->state($r), 'exactly one AD account across'); check($AD['writes'] === 0);
+ });
+ test('an unreadable OU or partial result blocks even when another OU matches', function() {
+  global $CONFIG, $AD; $r = ad_fixture(); $CONFIG['userbase'] = "OU=First,DC=test,DC=invalid\nOU=Second,DC=test,DC=invalid";
+  $AD['userresults']['OU=Second,DC=test,DC=invalid'] = false;
+  $d = new \local_districtupdate\directory();
+  expect_error(fn() => $d->state($r), 'failed or was incomplete');
+  $AD['userresults']['OU=Second,DC=test,DC=invalid'] = ['count' => 0, 'error' => 4];
+  expect_error(fn() => $d->state($r), 'failed or was incomplete'); check($AD['writes'] === 0);
+ });
+ test('no matches across any OU blocks processing', function() {
+  global $CONFIG, $AD; $r = ad_fixture(); $CONFIG['userbase'] = "OU=First,DC=test,DC=invalid\nOU=Second,DC=test,DC=invalid";
+  foreach (explode("\n", $CONFIG['userbase']) as $base) { $AD['userresults'][$base] = ['count' => 0]; }
+  $d = new \local_districtupdate\directory();
+  expect_error(fn() => $d->state($r), 'exactly one AD account across'); check($AD['writes'] === 0);
+ });
+ test('changing OU search bases invalidates an existing approval preview', function() {
+  global $MANAGER, $DB, $CONFIG; $MANAGER = true; ad_fixture();
+  $DB->tables['local_districtupdate_review'][1]->submittedat = time(); $DB->tables['local_districtupdate_roster'][1]->status = 'left';
+  $b = \local_districtupdate\processor::preview(1, [1]); $CONFIG['userbase'] .= "\nOU=New,DC=test,DC=invalid";
+  expect_error(fn() => \local_districtupdate\processor::process($b), 'Preview expired');
+ });
+
 }

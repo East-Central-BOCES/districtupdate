@@ -12,7 +12,6 @@ if ($hassiteconfig) {
   . 'Use a dedicated delegated AD account, trusted LDAPS, and full group DNs. See README.html in the plugin.'));
  $text = [
   'ldapurl' => ['LDAPS URL', 'Example: ldaps://dc.example.org:636. Certificate validation is required.', ''],
-  'userbase' => ['AD user search base DN', 'Search includes child OUs.', ''],
   'binddn' => ['AD service account bind DN', 'Delegate only the required group and user attribute permissions.', ''],
   'membersdn' => ['ECBOCES_Members group DN', 'Full distinguished name, not just the group name.', ''],
   'zoomdn' => ['Zoom group DN', 'Full distinguished name.', ''],
@@ -21,6 +20,11 @@ if ($hassiteconfig) {
  foreach ($text as $key => [$label, $help, $default]) {
   $settings->add(new admin_setting_configtext('local_districtupdate/'.$key, $label, $help, $default, PARAM_RAW_TRIMMED));
  }
+ $settings->add(new admin_setting_configtextarea('local_districtupdate/userbase', 'AD user search base DNs',
+  'Enter one full OU or container DN per line, on the configured AD domain. Each search includes child OUs. '
+  .'Keep the commas inside each DN; do not separate bases with commas or semicolons. Overlapping bases are supported. '
+  .'All bases must be readable, and a username must identify exactly one AD account across them. '
+  .'This setting locates AD accounts for preview/processing; roster creation still reads synced Moodle cohort members.', '', PARAM_RAW_TRIMMED, 70, 5));
  $settings->add(new admin_setting_configselect('local_districtupdate/identityattribute', 'AD username attribute',
   'Must match Moodle LDAP usernames exactly. Email is also checked.', 'samaccountname',
   ['samaccountname' => 'sAMAccountName', 'userprincipalname' => 'userPrincipalName']));

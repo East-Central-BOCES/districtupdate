@@ -8,10 +8,22 @@ final class directory {
  private object $config;
  private array $groups = [];
  private string $domainbase;
+ private array $userbases;
+ public static function user_bases(string $value): array {
+  $bases = [];
+  // Commas and semicolons can occur inside DNs; only line breaks separate bases.
+  foreach (preg_split('/\r\n|\r|\n/', $value) as $line) {
+   $dn = trim($line);
+   if ($dn !== '') { $bases[strtolower($dn)] = $dn; }
+  }
+  if (!$bases) { service::fail('Enter at least one AD user search base DN.'); }
+  return array_values($bases);
+ }
  public function __construct() {
   $this->config = get_config('local_districtupdate');
   if (!extension_loaded('ldap')) { service::fail('The Moodle server needs the PHP LDAP extension.'); }
   $c = $this->config;
+  $this->userbases = self::user_bases((string)($c->userbase ?? ''));
   foreach (['ldapurl', 'userbase', 'binddn', 'bindpassword', 'membersdn', 'zoomdn', 'basicdn'] as $key) {
    if (empty($c->$key)) { service::fail('LDAP configuration is incomplete: '.$key); }
   }
@@ -72,8 +84,27 @@ final class directory {
   }
   $attr = $this->config->identityattribute ?? 'samaccountname';
   $filter = '(&(objectCategory=person)(objectClass=user)('.$attr.'='.ldap_escape($row->username, '', LDAP_ESCAPE_FILTER).'))';
-  $entry = $this->one(@ldap_search($this->connection, $this->config->userbase, $filter,
-   ['objectGUID', $attr, 'mail', 'company', 'physicalDeliveryOfficeName', 'primaryGroupID', 'objectSid', 'adminCount'], 0, 2, 8));
+  $matches = [];
+  foreach ($this->userbases as $base) {
+   $result = @ldap_search($this->connection, $base, $filter,
+    ['objectGUID', $attr, 'mail', 'company', 'physicalDeliveryOfficeName', 'primaryGroupID', 'objectSid', 'adminCount'], 0, 2, 8);
+   $code = 0;
+   if (!$result || !ldap_parse_result($this->connection, $result, $code) || $code !== 0) {
+    service::fail('AD user search failed or was incomplete for base: '.$base.'. Check the DN and read permissions.');
+   }
+   $entries = ldap_get_entries($this->connection, $result);
+   if (!$entries || $entries['count'] > 1) { service::fail('AD user search did not return a unique account for base: '.$base); }
+   if ($entries['count'] === 0) { continue; }
+   $candidate = $entries[0];
+   if (empty($candidate['objectguid'][0])) { service::fail('An AD user search result is missing its object GUID.'); }
+   $guid = bin2hex($candidate['objectguid'][0]);
+   if (isset($matches[$guid]) && $matches[$guid] !== $candidate) {
+    service::fail('AD account changed during the search. Generate a fresh preview.');
+   }
+   $matches[$guid] = $candidate;
+  }
+  if (count($matches) !== 1) { service::fail('Expected exactly one AD account across all configured user search bases. Review the username and search bases.'); }
+  $entry = reset($matches);
   if (empty($entry['objectguid'][0]) || empty($entry['mail'][0]) || strcasecmp($entry['mail'][0], $row->email) !== 0
       || strcasecmp($entry[$attr][0] ?? '', $row->username) !== 0) {
    service::fail('The AD identity or email does not match the annual roster. Review this account manually.');
