@@ -39,3 +39,37 @@ test('template substitution does not recursively expand district data or permit 
  check($m['body'] === "{year}\n\nhttps://example.org/approve");
  check(!str_contains($m['subject'], "\n") && !str_contains($m['subject'], "\r"));
 });
+test('reviewers placeholder lists the same intended recipients in every invitation', function() {
+ global $DB, $CONFIG, $EMAILS;
+ $second = clone $DB->tables['user'][10]; $second->id = 11; $second->firstname = 'Second';
+ $second->email = 'second@north.org'; $DB->tables['user'][11] = $second;
+ $DB->tables['local_districtupdate_access'][2] = (object)['id' => 2, 'districtid' => 1, 'userid' => 11];
+ $CONFIG['invitationbody'] = "Other assigned reviewers:\n{reviewers}\n{reviewurl}";
+ \local_districtupdate\service::invite(1);
+ check(count($EMAILS) === 2 && $EMAILS[0]['body'] === $EMAILS[1]['body']);
+ check(str_contains($EMAILS[0]['body'], "- District Reviewer (reviewer@north.org)\n- Second Reviewer (second@north.org)"));
+});
+test('reviewer list excludes unavailable accounts disabled email and invalid addresses', function() {
+ global $DB;
+ foreach (range(11, 15) as $id) {
+  $u = clone $DB->tables['user'][10]; $u->id = $id; $u->email = 'test'.$id.'@north.org';
+  if ($id === 11) { $u->suspended = 1; }
+  if ($id === 12) { $u->deleted = 1; }
+  if ($id === 13) { $u->emailstop = 1; }
+  if ($id === 14) { $u->email = 'invalid'; }
+  if ($id !== 15) { $DB->tables['user'][$id] = $u; }
+  $DB->tables['local_districtupdate_access'][$id] = (object)['id' => $id, 'districtid' => 1, 'userid' => $id];
+ }
+ check(array_keys(\local_districtupdate\service::invitation_reviewers(1)) === [10]);
+});
+test('admin template can reference district reviewers while its default remains link-only', function() {
+ global $CONFIG, $ADMINS, $EMAILS;
+ $ADMINS = [(object)['id' => 99]];
+ $CONFIG['adminbody'] = "District reviewers:\n{reviewers}\n{reviewurl}";
+ \local_districtupdate\service::notify_admins(1);
+ check(str_contains($EMAILS[0]['body'], '- District Reviewer (reviewer@north.org)'));
+ check(!str_contains($EMAILS[0]['body'], 'Test Person'));
+ unset($CONFIG['adminbody']); $EMAILS = [];
+ \local_districtupdate\service::notify_admins(1);
+ check($EMAILS[0]['body'] === 'https://example.invalid/local/districtupdate/');
+});

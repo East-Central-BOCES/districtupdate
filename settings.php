@@ -59,7 +59,9 @@ if ($hassiteconfig) {
  $settings->add(new admin_setting_configcheckbox('local_districtupdate/automatic', 'Automatically start annual reviews',
   'Creates this year’s roster on or after the start date and sends invitations. Enable only after pilot approval.', 0));
  $settings->add(new admin_setting_heading('local_districtupdate/emailtemplates', 'Email messages',
-  'Edit the plain-text emails sent by this plugin. Placeholders: {district}, {year}, {duedate}, {reviewurl}. '
+  'Edit the plain-text emails sent by this plugin. Placeholders: {district}, {year}, {duedate}, {reviewurl}, {reviewers}. '
+  .'{reviewers} lists intended district invitation recipients alphabetically, one per line as - Name (email). '
+  .'It excludes unavailable accounts, disabled email and invalid addresses; it does not confirm delivery. '
   .'{reviewurl} points to the district review in invitations and the protected approval page in admin notifications. '
   .'If omitted from a message, the link is appended automatically. Blank fields use the defaults. '
   .'Admin notifications never automatically include staff lists, responses or notes. Saving these settings sends no email.'));

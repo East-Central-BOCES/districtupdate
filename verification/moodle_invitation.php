@@ -62,6 +62,11 @@ try {
  $assignments = $DB->get_records('local_districtupdate_access', ['districtid' => $districtid]);
  du_invite_assert(count($assignments) === 1 && (int)reset($assignments)->userid === (int)$userid, 'District email assignment failed or duplicated access.');
  echo "PASS: actual district-save POST accepts selected user IDs; legacy email resolution remains unambiguous.\n";
+ $second = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST); unset($second->id);
+ $second->username .= '-second'; $second->email = 'du-second-'.$tag.'@example.com'; $second->firstname = 'Second';
+ $secondid = $DB->insert_record('user', $second);
+ $DB->insert_record('local_districtupdate_access', (object)['districtid' => $districtid, 'userid' => $secondid]);
+ $CFG->forced_plugin_settings['local_districtupdate']['invitationbody'] = "Assigned reviewers:\n{reviewers}\n{reviewurl}";
  $_SERVER['REQUEST_METHOD'] = 'POST';
  $_GET = []; $_POST = ['action' => 'invite', 'reviewid' => $reviewid, 'sesskey' => sesskey()];
  $PAGE = new moodle_page();
@@ -81,6 +86,14 @@ try {
   stream_context_create(['http' => ['timeout' => 5]]));
  $receipt = json_decode($receipt, true, 512, JSON_THROW_ON_ERROR);
  du_invite_assert(($receipt['total'] ?? 0) > 0, 'No synthetic invitation was received by local Mailpit.');
+ $message = json_decode(file_get_contents('http://mailpit:8025/_/mail/api/v1/message/'.rawurlencode($receipt['messages'][0]['ID'])), true, 512, JSON_THROW_ON_ERROR);
+ $text = str_replace("\r\n", "\n", $message['Text']);
+ du_invite_assert(str_contains($text, '- Invitation Fixture ('.$email.")\n- Second Fixture (".$second->email.')'), 'Reviewer list was not expanded one per line.');
+ $other = json_decode(file_get_contents('http://mailpit:8025/_/mail/api/v1/search?query='.rawurlencode('to:'.$second->email)), true, 512, JSON_THROW_ON_ERROR);
+ du_invite_assert(!empty($other['messages']), 'Second reviewer invitation missing.');
+ $othermessage = json_decode(file_get_contents('http://mailpit:8025/_/mail/api/v1/message/'.rawurlencode($other['messages'][0]['ID'])), true, 512, JSON_THROW_ON_ERROR);
+ du_invite_assert($othermessage['Text'] === $message['Text'], 'Recipients received different reviewer lists.');
+ echo "PASS: both reviewer emails contain the same name/email list with one reviewer per line.\n";
  echo "PASS: real invitation POST completed with strict coding notices enabled; synthetic email sent only to local Mailpit.\n";
 } catch (Throwable $e) { $failure = $e; }
 restore_error_handler();

@@ -77,6 +77,7 @@ namespace {
  function require_capability(...$args) { if (!has_capability()) { throw new RuntimeException('No permission'); } }
  function is_siteadmin($id) { return $id === 99; }
  function isguestuser($u = null) { return ($u->id ?? 0) === 1; }
+ function validate_email($email) { return filter_var($email, FILTER_VALIDATE_EMAIL) !== false; }
  function get_admins() { global $ADMINS; return $ADMINS; }
  class core_user { public static function get_noreply_user() { return (object)['id' => 0]; } }
  function email_to_user($to, $from, $subject, $body) { global $EMAILS; $EMAILS[] = compact('to', 'subject', 'body'); return true; }

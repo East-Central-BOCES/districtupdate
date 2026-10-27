@@ -14,10 +14,12 @@ final class email_templates {
    'adminbody' => '{reviewurl}',
   ];
  }
- public static function render(string $type, object $district, object $cycle, string $url): array {
+ public static function render(string $type, object $district, object $cycle, string $url, array $reviewers = []): array {
   if (!in_array($type, ['invitation', 'admin'], true)) { throw new \coding_exception('Unknown district email template type.'); }
+  $reviewerlines = array_map(fn($user) => '- '.trim(preg_replace('/[\r\n]+/', ' ', fullname($user))).' ('.$user->email.')', $reviewers);
   $values = ['{district}' => $district->name, '{year}' => (string)$cycle->reviewyear,
-   '{duedate}' => userdate($cycle->duedate), '{reviewurl}' => $url];
+   '{duedate}' => userdate($cycle->duedate), '{reviewurl}' => $url,
+   '{reviewers}' => $reviewerlines ? implode("\n", $reviewerlines) : 'No active reviewers assigned.'];
   $defaults = self::defaults(); $rendered = [];
   foreach (['subject', 'body'] as $part) {
    $key = $type.$part;

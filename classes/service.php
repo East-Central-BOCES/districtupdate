@@ -282,13 +282,25 @@ final class service {
   } finally { $lock->release(); }
   if ($submit) { self::notify_admins($reviewid); }
  }
+ /** The intended invitation recipients; delivery success is logged separately for each account. */
+ public static function invitation_reviewers(int $districtid): array {
+  global $DB;
+  $users = [];
+  foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $districtid]) as $assignment) {
+   $user = $DB->get_record('user', ['id' => $assignment->userid, 'deleted' => 0, 'suspended' => 0]);
+   if (!$user || isguestuser($user) || !empty($user->emailstop) || !validate_email($user->email)) { continue; }
+   $users[$user->id] = $user;
+  }
+  uasort($users, fn($a, $b) => strcasecmp(fullname($a), fullname($b)) ?: ((int)$a->id <=> (int)$b->id));
+  return $users;
+ }
  public static function notify_admins(int $reviewid): void {
   global $DB;
   $review = $DB->get_record('local_districtupdate_review', ['id' => $reviewid], '*', MUST_EXIST);
   $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
   $cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
   $url = (new \moodle_url('/local/districtupdate/approve.php', ['reviewid' => $reviewid]))->out(false);
-  $message = email_templates::render('admin', $district, $cycle, $url);
+  $message = email_templates::render('admin', $district, $cycle, $url, self::invitation_reviewers($review->districtid));
   foreach (get_admins() as $admin) {
    $sent = email_to_user($admin, \core_user::get_noreply_user(), $message['subject'], $message['body']);
    self::audit(0, $admin->id, $sent ? 'admin_email_sent' : 'admin_email_failed', ['reviewid' => $reviewid]);
@@ -301,11 +313,10 @@ final class service {
   $district = $DB->get_record('local_districtupdate_dist', ['id' => $review->districtid], '*', MUST_EXIST);
   $cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
   $url = (new \moodle_url('/local/districtupdate/review.php', ['id' => $reviewid]))->out(false);
-  $message = email_templates::render('invitation', $district, $cycle, $url);
+  $reviewers = self::invitation_reviewers($review->districtid);
+  $message = email_templates::render('invitation', $district, $cycle, $url, $reviewers);
   $success = false;
-  foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $review->districtid]) as $assignment) {
-   $user = $DB->get_record('user', ['id' => $assignment->userid, 'deleted' => 0, 'suspended' => 0]);
-   if (!$user) { continue; }
+  foreach ($reviewers as $user) {
    $sent = email_to_user($user, \core_user::get_noreply_user(), $message['subject'], $message['body']);
    self::audit(0, $user->id, $sent ? 'invitation_sent' : 'invitation_failed', ['reviewid' => $reviewid]);
    $success = $success || $sent;
