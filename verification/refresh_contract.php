@@ -5,7 +5,7 @@ use local_districtupdate\service;
 function refresh_user(int $id = 21): void {
  global $DB;
  $u = clone $DB->tables['user'][20]; $u->id = $id; $u->username = 'newperson'.$id;
- $u->email = 'newperson'.$id.'@north.org'; $DB->tables['user'][$id] = $u;
+ $u->email = 'newperson'.$id.'@north.org'; $DB->tables['user'][$id] = $u; cohort_member_fixture($id);
 }
 test('refresh is restricted to administrators', function() {
  expect_error(fn() => service::refresh_cycle(1), 'No permission');

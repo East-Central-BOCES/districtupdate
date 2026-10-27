@@ -37,7 +37,7 @@ if ($hassiteconfig) {
  }
  asort($authoptions);
  $settings->add(new admin_setting_configmultiselect('local_districtupdate/authmethods', 'Roster authentication methods',
-  'Select the Moodle authentication methods whose users should be reviewed. Include every applicable LDAP method, '
+  'Only members of the Moodle cohort ECBOCES_Members are included. Select the authentication methods whose cohort members should be reviewed. Include every applicable LDAP method, '
   .'even if its identifier is not ldap. This does not change how users sign in. All selected accounts use the one '
   .'AD connection configured above; username and email are verified before processing. Refresh draft rosters after changing this selection.',
   ['ldap'], $authoptions));

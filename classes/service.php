@@ -68,14 +68,27 @@ final class service {
   if (is_array($configured)) { $configured = implode(',', $configured); }
   return array_values(array_filter(rules::lines((string)$configured), fn($name) => (bool)preg_match('/^[a-z][a-z0-9_]*$/D', $name)));
  }
- /** Shared source for initial snapshots and refresh; defaults to LDAP but supports other configured names. */
+ /** Resolve one cohort; never silently fall back to all users on a missing/ambiguous cohort. */
+ public static function roster_cohort_id(): int {
+  global $DB;
+  $matches = $DB->get_records('cohort', ['idnumber' => 'ECBOCES_Members'])
+   + $DB->get_records('cohort', ['name' => 'ECBOCES_Members']);
+  if (count($matches) !== 1) {
+   self::fail('Expected one Moodle cohort named or identified as ECBOCES_Members. Check cohorts before creating or refreshing rosters; no roster changes were made.');
+  }
+  return (int)reset($matches)->id;
+ }
+ /** Shared source for initial snapshots and refresh, restricted to the ECBOCES_Members Moodle cohort. */
  public static function eligible_users(): \Generator {
   global $DB;
   $methods = self::auth_methods();
   if (!$methods) { return; }
+  $cohortid = self::roster_cohort_id();
   $profiledistricts = self::profile_districts();
   [$authsql, $params] = $DB->get_in_or_equal($methods, SQL_PARAMS_NAMED, 'drauth');
-  $users = $DB->get_recordset_select('user', 'auth '.$authsql.' AND deleted = 0 AND suspended = 0 AND id > 1',
+  $params['drcohort'] = $cohortid;
+  $users = $DB->get_recordset_select('user', 'auth '.$authsql.' AND deleted = 0 AND suspended = 0 AND id > 1'
+   .' AND id IN (SELECT userid FROM {cohort_members} WHERE cohortid = :drcohort)',
    $params, 'id', 'id, username, firstname, lastname, email, institution');
   try {
    foreach ($users as $user) {
@@ -110,6 +123,7 @@ final class service {
    if ($DB->record_exists('local_districtupdate_cycle', ['reviewyear' => $year])) { self::fail('A review already exists for this year.'); }
    $districts = $DB->get_records('local_districtupdate_dist', null, 'name');
    if (!$districts) { self::fail('Add districts and reviewers first.'); }
+   self::roster_cohort_id();
    $tx = $DB->start_delegated_transaction();
    $cycleid = $DB->insert_record('local_districtupdate_cycle', (object)['reviewyear' => $year, 'duedate' => $duedate, 'timecreated' => time()]);
    $reviews = [];

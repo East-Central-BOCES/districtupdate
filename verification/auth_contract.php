@@ -21,8 +21,8 @@ test('initial rosters include a selected LDAP method with another name', functio
 test('refresh includes selected alternate methods and excludes others', function() {
  global $CONFIG, $DB, $MANAGER; $MANAGER = true; $CONFIG['authmethods'] = 'ldap,ldapdistrict';
  $u = clone $DB->tables['user'][20]; $u->id = 21; $u->username = 'otherldap'; $u->auth = 'ldapdistrict';
- $DB->tables['user'][21] = $u;
- $u = clone $u; $u->id = 22; $u->username = 'unselected'; $u->auth = 'otherauth'; $DB->tables['user'][22] = $u;
+ $DB->tables['user'][21] = $u; cohort_member_fixture(21);
+ $u = clone $u; $u->id = 22; $u->username = 'unselected'; $u->auth = 'otherauth'; $DB->tables['user'][22] = $u; cohort_member_fixture(22);
  $stats = service::refresh_cycle(1); check($stats['added'] === 1);
  check($DB->record_exists('local_districtupdate_roster', ['userid' => 21]));
  check(!$DB->record_exists('local_districtupdate_roster', ['userid' => 22]));

@@ -93,7 +93,7 @@ foreach ($DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC')
  echo $OUTPUT->heading($cycle->reviewyear.' review — due '.userdate($cycle->duedate), 3);
  echo local_districtupdate_formstart($url).local_districtupdate_hidden('cycleid', $cycle->id)
   .local_districtupdate_button('Refresh rosters from Moodle', 'action', 'refresh').'</form>';
- echo html_writer::tag('p', 'Refresh adds newly synced users and newly configured districts, updates untouched entries, and removes inactive untouched entries. '
+ echo html_writer::tag('p', 'Refresh includes only active users in the Moodle cohort ECBOCES_Members with a selected authentication method. It adds newly eligible users and newly configured districts, updates untouched entries, and removes untouched entries that are no longer eligible. '
   .'District responses and manual assignments are preserved. Submitted or processed reviews stay unchanged; reopen an unprocessed submitted review first if needed. '
   .'This uses the users already synced into Moodle and does not run an LDAP sync or send email.');
  echo local_districtupdate_formstart($url).local_districtupdate_hidden('cycleid', $cycle->id).local_districtupdate_button('Send invitations to all outstanding districts', 'action', 'inviteall').'</form>';

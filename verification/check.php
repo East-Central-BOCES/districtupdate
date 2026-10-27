@@ -66,7 +66,10 @@ namespace {
    return ['IN ('.implode(',', array_map(fn($key) => ':'.$key, array_keys($params))).')', $params];
   }
   public function get_recordset_select($table, $sql, $params, ...$rest) {
-   return new MockRecords(array_filter($this->tables[$table] ?? [], fn($u) => in_array($u->auth, array_values($params), true) && !$u->deleted && !$u->suspended && $u->id > 1));
+   $auths = array_filter($params, fn($key) => str_starts_with($key, 'drauth'), ARRAY_FILTER_USE_KEY);
+   return new MockRecords(array_filter($this->tables[$table] ?? [], fn($u) => in_array($u->auth, array_values($auths), true)
+    && !$u->deleted && !$u->suspended && $u->id > 1
+    && $this->record_exists('cohort_members', ['cohortid' => $params['drcohort'], 'userid' => $u->id])));
   }
  }
  function get_config($component, $key = null) { global $CONFIG; return $key === null ? (object)$CONFIG : ($CONFIG[$key] ?? false); }
@@ -93,7 +96,9 @@ namespace {
   global $DB, $USER, $MANAGER, $CONFIG, $ADMINS, $EMAILS;
   $ADMINS = []; $EMAILS = [];
   $DB = new MockDB(); $USER = (object)['id' => 10]; $MANAGER = false; $CONFIG = ['livewrites' => 0, 'excluded' => 'service-account'];
-  foreach (['local_districtupdate_dist','local_districtupdate_access','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit','local_districtupdate_cycle','user','user_info_field','user_info_data'] as $table) { $DB->tables[$table] = []; }
+  foreach (['local_districtupdate_dist','local_districtupdate_access','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit','local_districtupdate_cycle','user','user_info_field','user_info_data','cohort','cohort_members'] as $table) { $DB->tables[$table] = []; }
+  $DB->tables['cohort'][1] = (object)['id' => 1, 'name' => 'ECBOCES_Members', 'idnumber' => 'ECBOCES_Members'];
+  cohort_member_fixture(20);
   $DB->tables['local_districtupdate_dist'] = [1 => (object)['id' => 1, 'name' => 'North', 'domains' => 'north.org', 'aliases' => 'North Schools'],
    2 => (object)['id' => 2, 'name' => 'South', 'domains' => 'south.org', 'aliases' => 'South Schools']];
   $DB->tables['local_districtupdate_access'] = [1 => (object)['id' => 1, 'districtid' => 1, 'userid' => 10]];
@@ -107,6 +112,10 @@ namespace {
   $DB->tables['local_districtupdate_cycle'][1] = (object)['id' => 1, 'reviewyear' => 2025, 'duedate' => time()+DAYSECS, 'timecreated' => time()];
  }
  function response($status = 'still', $dest = 0) { return [1 => ['status' => $status, 'destination' => $dest, 'note' => '']]; }
+ function cohort_member_fixture(int $userid): void {
+  global $DB;
+  $DB->insert_record('cohort_members', (object)['cohortid' => 1, 'userid' => $userid]);
+ }
  use local_districtupdate\rules; use local_districtupdate\service; use local_districtupdate\processor; use local_districtupdate\directory;
  test('email domain matches case insensitively', function() { global $DB; check(rules::district('A@NORTH.ORG', '', $DB->tables['local_districtupdate_dist']) === 1); });
  test('Institution is the company fallback', function() { global $DB; check(rules::district('A@personal.org', 'South Schools', $DB->tables['local_districtupdate_dist']) === 2); });
@@ -129,11 +138,12 @@ namespace {
  test('preview requires administrator capability', fn() => expect_error(fn() => processor::preview(1, [1]), 'No permission'));
  test('preview mode never connects to AD and cannot execute', function() { global $DB, $MANAGER; $MANAGER = true; $DB->tables['local_districtupdate_review'][1]->submittedat = time(); $DB->tables['local_districtupdate_roster'][1]->status = 'left'; $b = processor::preview(1, [1]); check($b['rows'][1]['state'] === null); expect_error(fn() => processor::process($b), 'Preview expired'); });
  test('selected account must belong to the submitted review', function() { global $DB, $MANAGER; $MANAGER = true; $DB->tables['local_districtupdate_review'][2]->submittedat = time(); expect_error(fn() => processor::preview(2, [1]), 'Record not found'); });
- test('annual snapshot defaults to Still Employed and excludes service accounts', function() { global $DB; $service = clone $DB->tables['user'][20]; $service->id = 21; $service->username = 'service-account'; $DB->tables['user'][21] = $service; $DB->tables['local_districtupdate_review'] = []; $DB->tables['local_districtupdate_roster'] = []; $cycle = service::create_cycle(2026, time() + DAYSECS); $r = array_values($DB->tables['local_districtupdate_roster']); check(count($r) === 1 && $r[0]->status === 'still'); expect_error(fn() => service::create_cycle(2026, time() + DAYSECS), 'already exists'); });
+ test('annual snapshot defaults to Still Employed and excludes service accounts', function() { global $DB; $service = clone $DB->tables['user'][20]; $service->id = 21; $service->username = 'service-account'; $DB->tables['user'][21] = $service; cohort_member_fixture(21); $DB->tables['local_districtupdate_review'] = []; $DB->tables['local_districtupdate_roster'] = []; $cycle = service::create_cycle(2026, time() + DAYSECS); $r = array_values($DB->tables['local_districtupdate_roster']); check(count($r) === 1 && $r[0]->status === 'still'); expect_error(fn() => service::create_cycle(2026, time() + DAYSECS), 'already exists'); });
  require $base.'/classes/audit_retention.php';
  require __DIR__.'/retention_contract.php';
  require __DIR__.'/auth_contract.php';
  require __DIR__.'/profile_contract.php';
+ require __DIR__.'/cohort_contract.php';
  require __DIR__.'/reviewer_contract.php';
  require __DIR__.'/picker_contract.php';
  require __DIR__.'/security_contract.php';

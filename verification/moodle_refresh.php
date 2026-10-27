@@ -11,12 +11,18 @@ core\session\manager::set_user(get_admin());
 $CFG->forced_plugin_settings['local_districtupdate']['authmethods'] = 'ldap,ldapdistrict';
 class districtupdate_test_rollback extends Exception {}
 function du_assert(bool $ok, string $message): void { if (!$ok) { throw new RuntimeException($message); } }
-$tables = ['user','user_info_category','user_info_field','user_info_data','local_districtupdate_dist','local_districtupdate_cycle','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit'];
+$tables = ['user','cohort','cohort_members','user_info_category','user_info_field','user_info_data','local_districtupdate_dist','local_districtupdate_cycle','local_districtupdate_review','local_districtupdate_roster','local_districtupdate_audit'];
 $before = [];
 foreach ($tables as $table) { $before[$table] = $DB->count_records($table); }
 $tx = $DB->start_delegated_transaction(); $failure = null;
 try {
  $tag = bin2hex(random_bytes(6));
+ $cohorts = $DB->get_records('cohort', ['name' => 'ECBOCES_Members']) + $DB->get_records('cohort', ['idnumber' => 'ECBOCES_Members']);
+ if (!$cohorts) {
+  $cohortid = $DB->insert_record('cohort', (object)['name' => 'ECBOCES_Members', 'idnumber' => 'ECBOCES_Members',
+   'contextid' => context_system::instance()->id, 'description' => '', 'descriptionformat' => FORMAT_PLAIN,
+   'component' => '', 'visible' => 1, 'timecreated' => time(), 'timemodified' => time()]);
+ } else { du_assert(count($cohorts) === 1, 'Resolve ambiguous ECBOCES_Members cohorts first.'); $cohortid = (int)reset($cohorts)->id; }
  $districtname = 'District Update Test '.$tag; $domain = 'du-refresh-'.$tag.'.invalid';
  $districtid = $DB->insert_record('local_districtupdate_dist', (object)['name' => $districtname, 'domains' => $domain, 'aliases' => '']);
  $year = 2100;
@@ -30,6 +36,7 @@ try {
   'deleted' => 0, 'suspended' => 0, 'mnethostid' => $CFG->mnet_localhost_id];
  $user->auth = 'ldapdistrict';
  $userid = $DB->insert_record('user', $user);
+ $DB->insert_record('cohort_members', (object)['cohortid' => $cohortid, 'userid' => $userid, 'timeadded' => time()]);
  \local_districtupdate\service::refresh_cycle($cycleid);
  $row = $DB->get_record('local_districtupdate_roster', ['reviewid' => $reviewid, 'userid' => $userid], '*', MUST_EXIST);
  du_assert($row->status === 'still', 'New user was not prefilled as Still Employed.');
@@ -38,6 +45,7 @@ try {
  $DB->update_record('local_districtupdate_roster', $row);
  $user->username .= '-second'; $user->email = 'second@'.$domain;
  $secondid = $DB->insert_record('user', $user);
+ $DB->insert_record('cohort_members', (object)['cohortid' => $cohortid, 'userid' => $secondid, 'timeadded' => time()]);
  \local_districtupdate\service::refresh_cycle($cycleid);
  $saved = $DB->get_record('local_districtupdate_roster', ['id' => $row->id], '*', MUST_EXIST);
  du_assert($saved->status === 'left' && $saved->note === 'Preserve decision', 'Response was overwritten.');
@@ -46,6 +54,7 @@ try {
  $DB->set_field('local_districtupdate_review', 'submittedat', time(), ['id' => $reviewid]);
  $user->username .= '-third'; $user->email = 'third@'.$domain;
  $thirdid = $DB->insert_record('user', $user);
+ $DB->insert_record('cohort_members', (object)['cohortid' => $cohortid, 'userid' => $thirdid, 'timeadded' => time()]);
  \local_districtupdate\service::refresh_cycle($cycleid);
  du_assert(!$DB->record_exists('local_districtupdate_roster', ['userid' => $thirdid]), 'Submitted review was changed.');
  \local_districtupdate\service::reopen($reviewid);
@@ -87,6 +96,7 @@ try {
  $CFG->forced_plugin_settings['local_districtupdate']['districtprofilefield'] = $shortname;
  $user->username = 'du-profile-'.$tag; $user->email = 'du-profile@unknown.invalid'; $user->institution = '';
  $profileuserid = $DB->insert_record('user', $user);
+ $DB->insert_record('cohort_members', (object)['cohortid' => $cohortid, 'userid' => $profileuserid, 'timeadded' => time()]);
  $dataid = $DB->insert_record('user_info_data', (object)['userid' => $profileuserid, 'fieldid' => $fieldid,
   'data' => $districtname, 'dataformat' => FORMAT_PLAIN]);
  \local_districtupdate\service::refresh_cycle($cycleid);
@@ -98,6 +108,17 @@ try {
  $unmatched = $DB->get_record('local_districtupdate_review', ['id' => $profilerow->reviewid], '*', MUST_EXIST);
  du_assert((int)$unmatched->districtid === 0, 'Changed custom District did not rematch the untouched roster.');
  echo "PASS: real custom District profile data matches users with no email/Institution match and refresh rematches changed values.\n";
+ $user->username = 'du-nonmember-'.$tag; $user->email = 'nonmember@'.$domain; $user->institution = $districtname;
+ $outsiderid = $DB->insert_record('user', $user);
+ \local_districtupdate\service::refresh_cycle($cycleid);
+ du_assert(!$DB->record_exists('local_districtupdate_roster', ['userid' => $outsiderid]), 'Non-cohort account was included.');
+ $DB->insert_record('cohort_members', (object)['cohortid' => $cohortid, 'userid' => $outsiderid, 'timeadded' => time()]);
+ \local_districtupdate\service::refresh_cycle($cycleid);
+ du_assert($DB->record_exists('local_districtupdate_roster', ['userid' => $outsiderid]), 'New cohort member was not included.');
+ $DB->delete_records('cohort_members', ['cohortid' => $cohortid, 'userid' => $outsiderid]);
+ \local_districtupdate\service::refresh_cycle($cycleid);
+ du_assert(!$DB->record_exists('local_districtupdate_roster', ['userid' => $outsiderid]), 'Untouched departed cohort member remained.');
+ echo "PASS: real Moodle cohort membership excludes nonmembers, includes new members, and removes untouched users after leaving the cohort.\n";
 } catch (Throwable $e) { $failure = $e; }
 try { $tx->rollback(new districtupdate_test_rollback()); } catch (districtupdate_test_rollback $expected) {}
 if ($failure) { throw $failure; }
