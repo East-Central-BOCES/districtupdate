@@ -73,3 +73,28 @@ test('admin template can reference district reviewers while its default remains 
  \local_districtupdate\service::notify_admins(1);
  check($EMAILS[0]['body'] === 'https://example.invalid/local/districtupdate/');
 });
+test('configured notification mailboxes replace all site administrator recipients', function() {
+ global $CONFIG, $ADMINS, $EMAILS, $DB;
+ $ADMINS = [(object)['id' => 99, 'email' => 'admin@example.com']];
+ $CONFIG['notificationemails'] = "reviewdesk@example.com\notherdesk@example.com\nREVIEWDESK@example.com";
+ \local_districtupdate\service::notify_admins(1);
+ check(count($EMAILS) === 2);
+ check($EMAILS[0]['to']->email === 'REVIEWDESK@example.com' && $EMAILS[1]['to']->email === 'otherdesk@example.com');
+ check(!in_array('admin@example.com', array_map(fn($m) => $m['to']->email, $EMAILS), true));
+ check($DB->tables['local_districtupdate_audit'][1]->userid === 0);
+ check(str_contains($DB->tables['local_districtupdate_audit'][1]->detail, 'REVIEWDESK@example.com'));
+});
+test('blank notification setting preserves the site administrator fallback', function() {
+ global $CONFIG, $ADMINS, $EMAILS;
+ $CONFIG['notificationemails'] = ''; $ADMINS = [(object)['id' => 99, 'email' => 'admin@example.com']];
+ \local_districtupdate\service::notify_admins(1);
+ check(count($EMAILS) === 1 && $EMAILS[0]['to']->id === 99);
+});
+test('invalid configured notification addresses neither send nor fall back to administrators', function() {
+ global $CONFIG, $ADMINS, $EMAILS, $DB;
+ $CONFIG['notificationemails'] = "valid@example.com\nnot-an-email";
+ $ADMINS = [(object)['id' => 99, 'email' => 'admin@example.com']];
+ \local_districtupdate\service::notify_admins(1);
+ check(!$EMAILS && $DB->tables['local_districtupdate_audit'][1]->event === 'admin_email_failed');
+ expect_error(fn() => \local_districtupdate\notification_addresses::parse('Bad Name <name@example.com>'), 'valid email');
+});

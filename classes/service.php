@@ -301,9 +301,26 @@ final class service {
   $cycle = $DB->get_record('local_districtupdate_cycle', ['id' => $review->cycleid], '*', MUST_EXIST);
   $url = (new \moodle_url('/local/districtupdate/approve.php', ['reviewid' => $reviewid]))->out(false);
   $message = email_templates::render('admin', $district, $cycle, $url, self::invitation_reviewers($review->districtid));
-  foreach (get_admins() as $admin) {
+  try { $addresses = notification_addresses::parse((string)get_config('local_districtupdate', 'notificationemails')); }
+  catch (\InvalidArgumentException $e) {
+   self::audit(0, 0, 'admin_email_failed', ['reviewid' => $reviewid, 'message' => 'Admin notification addresses are invalid. Check plugin settings.']);
+   return;
+  }
+  $recipients = get_admins();
+  if ($addresses) {
+   $recipients = [];
+   foreach ($addresses as $address) {
+    $recipient = clone \core_user::get_noreply_user();
+    $recipient->id = \core_user::NOREPLY_USER;
+    $recipient->email = $address; $recipient->firstname = 'District review notifications'; $recipient->lastname = '';
+    $recipient->emailstop = 0; $recipient->mailformat = 0;
+    $recipients[] = $recipient;
+   }
+  }
+  foreach ($recipients as $admin) {
    $sent = email_to_user($admin, \core_user::get_noreply_user(), $message['subject'], $message['body']);
-   self::audit(0, $admin->id, $sent ? 'admin_email_sent' : 'admin_email_failed', ['reviewid' => $reviewid]);
+   self::audit(0, $admin->id > 0 ? $admin->id : 0, $sent ? 'admin_email_sent' : 'admin_email_failed',
+    ['reviewid' => $reviewid, 'recipient' => $admin->email ?? '']);
   }
  }
  public static function invite(int $reviewid): void {

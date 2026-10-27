@@ -35,8 +35,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $results = \local_districtupdate\processor::process($processingbatch);
  } else { \local_districtupdate\service::fail('Unknown action.'); }
 }
+$roster = $DB->get_records('local_districtupdate_roster', ['reviewid' => $reviewid], 'fullname');
+$counts = ['still' => 0, 'left' => 0, 'moved' => 0]; $pending = 0;
+foreach ($roster as $r) {
+ $counts[$r->status]++;
+ if ($r->status !== 'still' && $r->processstate !== 'done') { $pending++; }
+}
 echo $OUTPUT->header();
 echo html_writer::link(new moodle_url('/local/districtupdate/manage.php'), 'Manage all reviews');
+echo ' · '.html_writer::link(new moodle_url('/local/districtupdate/review.php', ['id' => $reviewid]), 'View submitted roster');
+$submitter = $DB->get_record('user', ['id' => $review->submittedby]);
+echo html_writer::tag('p', 'Submitted by '.s($submitter ? fullname($submitter) : 'a previous reviewer').' on '
+ .userdate($review->submittedat).'.', ['class' => 'mt-3']);
+echo html_writer::tag('p', count($roster).' staff · '.$counts['still'].' still employed · '.$counts['left'].' departures · '
+ .$counts['moved'].' transfers', ['class' => 'mb-3']);
+
 if ($results !== null) {
  $rows = [];
  foreach ($results as $id => $result) { $rows[] = [s($processingbatch['rows'][$id]['row']->fullname), s($result)]; }
@@ -54,7 +67,7 @@ if ($batch) {
   $before = $state ? 'Office: '.$state['office'].'; Company: '.$state['company'].'; Direct groups: '
     .implode(', ', array_keys(array_filter($state['groups'], fn($g) => $g['direct']))) : 'Not checked in preview mode';
   $rows[] = [s($item['row']->fullname).'<br>'.s($item['row']->username), s($before),
-   s(implode('; ', $item['actions'])), $item['error'] ? s('Blocked: '.$item['error']) : 'Ready'];
+   local_districtupdate_summary($item['actions']), $item['error'] ? s('Blocked: '.$item['error']) : 'Ready'];
  }
  echo local_districtupdate_table(['Account', 'Current AD values', 'Approved response → proposed actions', 'Check'], $rows);
  if ($batch['live'] && $valid) {
@@ -63,29 +76,39 @@ if ($batch) {
  }
  echo html_writer::link($url, 'Return to account selection');
 } else {
- echo $OUTPUT->notification('Changed accounts are selected by default. Uncheck anyone you want to exclude, '
-  .'or select a single account. Preview comes before execution. Failed or interrupted accounts can be retried with a fresh preview.', 'info');
- echo local_districtupdate_formstart($url);
- $rows = [];
- foreach ($DB->get_records('local_districtupdate_roster', ['reviewid' => $reviewid], 'fullname') as $r) {
-  if ($r->status === 'still') { continue; }
-  $eligible = $r->processstate !== 'done';
-  $checkbox = $eligible ? html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'selected[]', 'value' => $r->id,
-    'checked' => 'checked', 'aria-label' => 'Include '.$r->fullname]) : 'Completed';
-  $rows[] = [$checkbox, s($r->fullname).'<br>'.s($r->email), s(implode('; ', \local_districtupdate\rules::actions($r->status, $r->targetcompany))), s($r->processstate), s($r->note)];
+ if (!$counts['left'] && !$counts['moved']) {
+  echo $OUTPUT->notification($roster ? 'No directory changes required. All staff in this review were marked Still Employed.'
+   : 'This submitted review contains no staff accounts. No directory changes to process.', 'success');
+ } else {
+  echo $OUTPUT->notification($pending ? 'Changed accounts are selected below. Uncheck anyone you want to exclude, then preview before processing. Failed or interrupted accounts need a fresh preview.'
+   : 'All requested directory changes have been completed.', $pending ? 'info' : 'success');
+  if ($pending) { echo local_districtupdate_formstart($url); }
+  $rows = [];
+  foreach ($roster as $r) {
+   if ($r->status === 'still') { continue; }
+   $eligible = $r->processstate !== 'done';
+   $checkbox = $eligible ? html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'selected[]', 'value' => $r->id,
+     'checked' => 'checked', 'aria-label' => 'Include '.$r->fullname]) : 'Completed';
+   $rows[] = [$checkbox, s($r->fullname).'<br>'.s($r->email),
+    local_districtupdate_summary(\local_districtupdate\rules::actions($r->status, $r->targetcompany)),
+    s(\local_districtupdate\audit_display::processing_status($r->processstate)), s($r->note)];
+  }
+  echo local_districtupdate_table(['Include', 'Account', 'Proposed actions', 'Status', 'District notes'], $rows);
+  if ($pending) { echo local_districtupdate_button('Preview selected accounts', 'action', 'preview').'</form>'; }
  }
- echo local_districtupdate_table(['Include', 'Account', 'Proposed actions', 'Processing status', 'District notes'], $rows);
- echo local_districtupdate_button('Preview selected accounts', 'action', 'preview').'</form>';
 }
-echo $OUTPUT->heading('Review audit — latest 200 entries', 3);
-echo html_writer::tag('p', 'Audit entries expire after '.\local_districtupdate\audit_retention::days().' days. Review responses and processing status are retained.');
+echo $OUTPUT->heading('Review activity', 3);
+echo html_writer::tag('p', 'Showing the latest 200 entries. Activity history expires after '.\local_districtupdate\audit_retention::days().' days. Review responses and processing status are retained.');
 $logs = $DB->get_records_sql('SELECT a.* FROM {local_districtupdate_audit} a JOIN {local_districtupdate_roster} r ON r.id = a.rosterid
  WHERE r.reviewid = :reviewid ORDER BY a.id DESC', ['reviewid' => $reviewid], 0, 200);
-$rows = [];
+$rows = []; $formatter = local_districtupdate_audit_formatter();
 foreach ($logs as $log) {
  $actor = $log->actorid ? $DB->get_record('user', ['id' => $log->actorid]) : null;
  $subject = $DB->get_record('local_districtupdate_roster', ['id' => $log->rosterid]);
- $rows[] = [userdate($log->timecreated), s($subject->fullname ?? ''), s($actor ? fullname($actor) : 'Scheduled task'), s($log->event), s($log->detail)];
+ [$activity, $summary] = $formatter->describe($log->event, $log->detail);
+ $rows[] = [userdate($log->timecreated, get_string('strftimedatetimeshort', 'langconfig')), s($subject->fullname ?? ''),
+  s($actor ? fullname($actor) : 'Scheduled task'), s($activity), local_districtupdate_summary($summary)];
 }
-echo local_districtupdate_table(['Time', 'Staff member', 'Actor', 'Event', 'Details'], $rows);
+echo $rows ? local_districtupdate_table(['When', 'Staff member', 'Updated by', 'Activity', 'Summary'], $rows)
+ : html_writer::tag('p', 'No recent activity recorded for this review.');
 echo $OUTPUT->footer();

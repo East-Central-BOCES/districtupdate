@@ -66,6 +66,11 @@ if ($hassiteconfig) {
   .'If omitted from a message, the link is appended automatically. Blank fields use the defaults. '
   .'Admin notifications never automatically include staff lists, responses or notes. Saving these settings sends no email.'));
  $emaildefaults = \local_districtupdate\email_templates::defaults();
+ $settings->add(new \local_districtupdate\setting\notification_emails('local_districtupdate/notificationemails',
+  'Admin notification email addresses',
+  'Send submitted-review notifications only to these addresses, one per line. A shared mailbox is supported and no Moodle account is required to receive email. '
+  .'Opening and processing the review still requires Moodle login and management permission. '
+  .'Leave blank to notify every Moodle site administrator. Saving this setting sends no email.', '', PARAM_RAW, 70, 3));
  foreach (['invitation' => 'Reviewer invitation / reminder', 'admin' => 'Admin submission notification'] as $type => $label) {
   $settings->add(new admin_setting_configtext('local_districtupdate/'.$type.'subject', $label.' subject',
    '', $emaildefaults[$type.'subject'], PARAM_TEXT));

@@ -127,12 +127,16 @@ foreach ($DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC')
    echo local_districtupdate_table(['Name', 'Email', 'Institution', 'Assign district'], $rows); }
  }
 }
-echo $OUTPUT->heading('Recent notification and configuration audit', 3);
+echo $OUTPUT->heading('Recent notifications and configuration activity', 3);
 echo html_writer::tag('p', 'Audit entries expire after '.\local_districtupdate\audit_retention::days().' days and are removed by Moodle’s daily cleanup task. Rosters and review responses are retained.');
-$rows = [];
+$rows = []; $formatter = local_districtupdate_audit_formatter();
 foreach ($DB->get_records('local_districtupdate_audit', ['rosterid' => 0], 'id DESC', '*', 0, 100) as $log) {
  $actor = $log->actorid ? $DB->get_record('user', ['id' => $log->actorid]) : null;
- $rows[] = [userdate($log->timecreated), s($log->event), s($actor ? fullname($actor) : 'Scheduled task'), s($log->detail)];
+ $recipient = $log->userid ? $DB->get_record('user', ['id' => $log->userid]) : null;
+ [$activity, $summary] = $formatter->describe($log->event, $log->detail);
+ $rows[] = [userdate($log->timecreated, get_string('strftimedatetimeshort', 'langconfig')), s($activity),
+  s($recipient ? fullname($recipient) : ''), s($actor ? fullname($actor) : 'Scheduled task'), local_districtupdate_summary($summary)];
 }
-echo local_districtupdate_table(['Time', 'Event', 'Actor', 'Details'], $rows);
+echo $rows ? local_districtupdate_table(['When', 'Activity', 'Account / recipient', 'Updated by', 'Summary'], $rows)
+ : html_writer::tag('p', 'No recent notifications or configuration activity.');
 echo $OUTPUT->footer();

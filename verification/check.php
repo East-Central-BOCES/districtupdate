@@ -79,13 +79,16 @@ namespace {
  function isguestuser($u = null) { return ($u->id ?? 0) === 1; }
  function validate_email($email) { return filter_var($email, FILTER_VALIDATE_EMAIL) !== false; }
  function get_admins() { global $ADMINS; return $ADMINS; }
- class core_user { public static function get_noreply_user() { return (object)['id' => 0]; } }
+ class core_user {
+  const NOREPLY_USER = -10;
+  public static function get_noreply_user() { return (object)['id' => 0]; }
+ }
  function email_to_user($to, $from, $subject, $body) { global $EMAILS; $EMAILS[] = compact('to', 'subject', 'body'); return true; }
  function fullname($u) { return $u->firstname.' '.$u->lastname; }
  function userdate($date) { return (string)$date; }
  class moodle_url { public function __construct(...$args) {} public function out($escaped = true) { return 'https://example.invalid/local/districtupdate/'; } }
  $base = dirname(__DIR__);
- require $base.'/classes/rules.php'; require $base.'/classes/email_templates.php'; require $base.'/classes/service.php'; require $base.'/classes/reviewers.php'; require $base.'/classes/directory.php'; require $base.'/classes/processor.php';
+ require $base.'/classes/rules.php'; require $base.'/classes/email_templates.php'; require $base.'/classes/notification_addresses.php'; require $base.'/classes/service.php'; require $base.'/classes/reviewers.php'; require $base.'/classes/audit_display.php'; require $base.'/classes/directory.php'; require $base.'/classes/processor.php';
  $count = 0;
  function check($condition, string $message = 'Assertion failed'): void { if (!$condition) { throw new RuntimeException($message); } }
  function expect_error(callable $f, string $part): void {
@@ -149,6 +152,7 @@ namespace {
  require __DIR__.'/picker_contract.php';
  require __DIR__.'/security_contract.php';
  require __DIR__.'/email_contract.php';
+ require __DIR__.'/audit_display_contract.php';
  require __DIR__.'/refresh_contract.php';
  require __DIR__.'/directory_contract.php';
  echo "$count checks passed. Stubbed Moodle/AD contracts only; no live server was contacted.\n";

@@ -22,3 +22,12 @@ function local_districtupdate_table(array $head, array $rows): string {
  $t = new html_table(); $t->head = $head; $t->data = $rows; $t->attributes['class'] = 'generaltable table table-striped';
  return html_writer::tag('div', html_writer::table($t), ['class' => 'table-responsive']);
 }
+function local_districtupdate_summary(array $lines): string {
+ return implode('', array_map(fn($line) => html_writer::tag('div', s($line), ['class' => 'mb-1', 'style' => 'overflow-wrap: anywhere;']), $lines));
+}
+function local_districtupdate_audit_formatter(): \local_districtupdate\audit_display {
+ global $DB;
+ return new \local_districtupdate\audit_display(
+  $DB->get_records_menu('local_districtupdate_dist', null, '', 'id, name'),
+  $DB->get_records_menu('local_districtupdate_review', null, '', 'id, districtid'));
+}
