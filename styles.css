@@ -1,0 +1,25 @@
+/* Keep roster headings neutral so completed reviews do not dominate the page.
+   Override Bootstrap's utility colours only inside district roster cards. */
+.district-review > .card-header {
+    background-color: #f7f8fa !important;
+    color: #343a40 !important;
+}
+
+.district-review > .card-header h3,
+.district-review > .card-header strong {
+    color: inherit;
+}
+
+.district-review .card-body strong.bg-success {
+    background-color: #e8f3eb !important;
+    color: #245c35 !important;
+    border-left: 3px solid #7eaa89;
+    border-radius: 3px;
+}
+
+.district-review .card-body strong.bg-warning {
+    background-color: #fff5d6 !important;
+    color: #705310 !important;
+    border-left: 3px solid #d2b35d;
+    border-radius: 3px;
+}
