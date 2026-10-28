@@ -81,6 +81,38 @@ final class roster_admin {
    $tx->allow_commit(); return count($rows);
   } finally { $lock->release(); }
  }
+ public static function can_reopen(object $review): bool {
+  global $DB;
+  return !$DB->record_exists_select('local_districtupdate_roster', "reviewid = :id AND processstate <> 'pending'", ['id' => $review->id]);
+ }
+ /** Delete plugin records only, with all review locks held to exclude concurrent processing and transfers. */
+ public static function delete_district(int $id, string $confirmation): array {
+  global $DB;
+  require_capability('local/districtupdate:manage', \context_system::instance());
+  $annual = service::lock('annual'); $locks = [];
+  try {
+   $district = $DB->get_record('local_districtupdate_dist', ['id' => $id], '*', MUST_EXIST);
+   if ($confirmation !== $district->name) { service::fail('Type the district name exactly to confirm permanent deletion.'); }
+   $reviews = $DB->get_records('local_districtupdate_review', null, 'id');
+   foreach ($reviews as $r) { $locks[] = service::lock('review:'.$r->id); }
+   $own = []; foreach ($reviews as $r) { if ((int)$r->districtid === $id) { $own[$r->id] = true; } }
+   foreach ($DB->get_records('local_districtupdate_roster', ['destination' => $id]) as $row) {
+    if (!isset($own[$row->reviewid])) { service::fail('Another district review references this district as a transfer destination. Resolve those transfers before deleting it.'); }
+   }
+   $tx = $DB->start_delegated_transaction(); $counts = ['reviews' => count($own), 'staff' => 0];
+   foreach (array_keys($own) as $reviewid) {
+    foreach ($DB->get_records('local_districtupdate_roster', ['reviewid' => $reviewid]) as $row) {
+     $DB->delete_records('local_districtupdate_audit', ['rosterid' => $row->id]); $counts['staff']++;
+    }
+    $DB->delete_records('local_districtupdate_roster', ['reviewid' => $reviewid]);
+    $DB->delete_records('local_districtupdate_review', ['id' => $reviewid]);
+   }
+   $DB->delete_records('local_districtupdate_access', ['districtid' => $id]);
+   $DB->delete_records('local_districtupdate_dist', ['id' => $id]);
+   service::audit(0, 0, 'district_deleted', ['name' => $district->name, 'summary' => $counts]);
+   $tx->allow_commit(); return $counts;
+  } finally { foreach (array_reverse($locks) as $lock) { $lock->release(); } $annual->release(); }
+ }
  public static function archive_district(int $id, bool $archive): array {
   global $DB;
   require_capability('local/districtupdate:manage', \context_system::instance());

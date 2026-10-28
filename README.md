@@ -211,3 +211,9 @@ Before production use, test on Moodle 5.1.1 with dedicated AD test accounts:
 - [Microsoft Office attribute](https://learn.microsoft.com/en-us/windows/win32/adschema/a-physicaldeliveryofficename)
 
 Licensed under GPL-3.0-or-later. See COPYING.txt.
+
+### Roster overview and permanent test-district cleanup (0.1.17)
+
+Review all rosters shows one card per district with its reviewers, matching settings and annual roster actions together. Yellow means submitted; green means all requested AD changes completed and verified. Submitted rosters with no requested changes have an explicit No changes needed label. Annual creation, refresh, bulk unmatched and exclusion controls are in Annual roster tools. Audit trail opens a separate paginated page; approval-page activity is collapsed by default.
+
+Delete permanently opens a confirmation page showing the review and staff-entry counts and requires the exact district name. It deletes the district, reviewer assignments, all its annual reviews, responses, processing history and associated account audit entries. It never deletes Moodle/AD users or reverses earlier directory changes. A summary deletion audit and configuration/notification events remain until normal audit retention. Other reviews referencing the district as a transfer destination block deletion; resolve those references first. Eligible staff can appear as unmatched after refresh. Remove from rostering remains available for reversible retirement.

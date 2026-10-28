@@ -6,7 +6,7 @@ $PAGE->set_context(context_system::instance());
 require_login();
 require_capability('local/districtupdate:manage', context_system::instance());
 $url = new moodle_url('/local/districtupdate/manage.php');
-local_districtupdate_page('Manage district staff reviews', $url);
+local_districtupdate_page('Review all rosters', $url);
 $action = optional_param('action', '', PARAM_ALPHA);
 $edit = optional_param('edit', 0, PARAM_INT);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'district') { $edit = optional_param('districtid', 0, PARAM_INT); }
@@ -67,29 +67,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 echo $OUTPUT->header();
 echo html_writer::link(new moodle_url('/local/districtupdate/index.php'), 'Review dashboard').' · '
- .html_writer::link(new moodle_url('/admin/settings.php', ['section' => 'local_districtupdate']), 'Plugin settings');
+ .html_writer::link(new moodle_url('/admin/settings.php', ['section' => 'local_districtupdate']), 'Plugin settings').' · '
+ .html_writer::link(new moodle_url('/local/districtupdate/audit.php'), 'Audit trail');
 echo $OUTPUT->notification(get_config('local_districtupdate', 'livewrites')
  ? 'Live AD processing is enabled. Each batch still requires an administrator preview and confirmation.'
  : 'Preview mode: AD writes are disabled.', 'info');
 echo local_districtupdate_formstart($url).local_districtupdate_button('Test LDAPS connection and group DNs', 'action', 'testldap').'</form>';
 $districts = $DB->get_records('local_districtupdate_dist', null, 'name');
-$rows = [];
-foreach ($districts as $d) {
- $names = [];
- foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $d->id]) as $a) {
-  $u = $DB->get_record('user', ['id' => $a->userid]); if ($u) { $names[] = fullname($u).' ('.$u->email.'; '.$u->username.')'; }
- }
- $archivebutton = local_districtupdate_formstart($url).local_districtupdate_hidden('districtid', $d->id)
-  .html_writer::tag('button', !empty($d->archived) ? 'Restore district' : 'Remove from rostering', ['type' => 'submit', 'name' => 'action', 'value' => !empty($d->archived) ? 'restore' : 'archive',
-   'class' => 'btn btn-outline-secondary btn-sm', 'data-confirm' => !empty($d->archived) ? 'Restore this district for rostering?' : 'Remove this district from rostering? Untouched draft entries will be removed; recorded responses and submitted history are preserved. Moodle and AD accounts are unchanged.']).'</form>';
- $rows[] = [s($d->name).(!empty($d->archived) ? '<br><strong>Removed from rostering</strong>' : ''), s($d->domains), s($d->aliases), s(implode('; ', $names)),
-  html_writer::link(new moodle_url($url, ['edit' => $d->id]), 'Edit').$archivebutton];
-}
-echo $OUTPUT->heading('Districts and reviewers', 3);
-echo local_districtupdate_table(['District / AD Company', 'Email domains', 'Institution / District aliases', 'Reviewers', ''], $rows);
-echo $OUTPUT->heading($edit ? 'Edit district' : 'Add one district', 4);
+echo html_writer::start_tag('details', $edit || $action === 'district' ? ['open' => 'open', 'class' => 'my-3'] : ['class' => 'my-3']);
+echo html_writer::tag('summary', $edit ? 'Edit district' : 'Add a district', ['class' => 'h5']);
 $districtform->display();
+echo '</details>';
 $PAGE->requires->js_init_code("document.querySelectorAll('[data-confirm]').forEach(function(b) { b.addEventListener('click', function(e) { if (!window.confirm(b.dataset.confirm)) { e.preventDefault(); } }); }); document.getElementById('id_name').addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); document.getElementById('id_domains').focus(); } });");
+echo '<details class="my-3"><summary class="h5">Annual roster tools</summary>';
 echo $OUTPUT->heading('Start an annual review', 3);
 echo local_districtupdate_formstart($url);
 echo '<label>Review year '.local_districtupdate_input('year', userdate(time(), '%Y'), 'number', ['min' => 2020, 'max' => 2100, 'required' => 'required']).'</label> ';
@@ -103,25 +93,6 @@ foreach ($DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC')
   .'District responses and manual assignments are preserved. Submitted or processed reviews stay unchanged; reopen an unprocessed submitted review first if needed. '
   .'This uses the users already synced into Moodle and does not run an LDAP sync or send email.');
  echo local_districtupdate_formstart($url).local_districtupdate_hidden('cycleid', $cycle->id).local_districtupdate_button('Send invitations to all outstanding districts', 'action', 'inviteall').'</form>';
- $rows = [];
- foreach ($DB->get_records('local_districtupdate_review', ['cycleid' => $cycle->id], 'districtid') as $r) {
-  if (!$r->districtid) { continue; }
-  $count = $DB->count_records('local_districtupdate_roster', ['reviewid' => $r->id]);
-  $archived = !empty($districts[$r->districtid]->archived);
-  if ($archived && !$r->submittedat) { continue; }
-  $controls = html_writer::link(new moodle_url('/local/districtupdate/review.php', ['id' => $r->id]), 'Roster');
-  if ($r->submittedat) {
-   if (!$archived) { $controls .= ' · '.html_writer::link(new moodle_url('/local/districtupdate/approve.php', ['reviewid' => $r->id]), 'Preview / process / audit');
-   $controls .= local_districtupdate_formstart($url).local_districtupdate_hidden('reviewid', $r->id).local_districtupdate_button('Reopen review', 'action', 'reopen').'</form>'; } else { $controls .= ' · Historical review (district removed)'; }
-   $submitter = $DB->get_record('user', ['id' => $r->submittedby]);
-   $status = 'Submitted by '.($submitter ? fullname($submitter) : 'previous reviewer').' on '.userdate($r->submittedat);
-  } else {
-   $controls .= local_districtupdate_formstart($url).local_districtupdate_hidden('reviewid', $r->id).local_districtupdate_button('Send review link', 'action', 'invite').'</form>';
-   $status = 'Awaiting review';
-  }
-  $rows[] = [s($districts[$r->districtid]->name ?? 'Previous district'), $count, s($status), $r->lastsent ? userdate($r->lastsent) : 'Not sent', $controls];
- }
- echo local_districtupdate_table(['District', 'Staff', 'Status', 'Last invitation', 'Actions'], $rows);
  $unmatched = $DB->get_record('local_districtupdate_review', ['cycleid' => $cycle->id, 'districtid' => 0]);
  if ($unmatched) {
   $unmatchedcount = $DB->count_records('local_districtupdate_roster', ['reviewid' => $unmatched->id]);
@@ -132,16 +103,65 @@ foreach ($DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC')
  }
 
 }
-echo $OUTPUT->heading('Recent notifications and configuration activity', 3);
-echo html_writer::tag('p', 'Audit entries expire after '.\local_districtupdate\audit_retention::days().' days and are removed by Moodle’s daily cleanup task. Rosters and review responses are retained.');
-$rows = []; $formatter = local_districtupdate_audit_formatter();
-foreach ($DB->get_records('local_districtupdate_audit', ['rosterid' => 0], 'id DESC', '*', 0, 100) as $log) {
- $actor = $log->actorid ? $DB->get_record('user', ['id' => $log->actorid]) : null;
- $recipient = $log->userid ? $DB->get_record('user', ['id' => $log->userid]) : null;
- [$activity, $summary] = $formatter->describe($log->event, $log->detail);
- $rows[] = [userdate($log->timecreated, get_string('strftimedatetimeshort', 'langconfig')), s($activity),
-  s($recipient ? fullname($recipient) : ''), s($actor ? fullname($actor) : 'Scheduled task'), local_districtupdate_summary($summary)];
+echo '</details>';
+echo html_writer::tag('p', 'Yellow: district submitted · Green: all requested AD changes verified. Status labels also identify reviews requiring no changes.');
+$cycles = $DB->get_records('local_districtupdate_cycle', null, 'reviewyear DESC');
+$reviews = $DB->get_records('local_districtupdate_review');
+$stats = $DB->get_records_sql("SELECT reviewid AS id, COUNT(*) AS staff,
+ SUM(CASE WHEN status <> 'still' THEN 1 ELSE 0 END) AS changed,
+ SUM(CASE WHEN status <> 'still' AND processstate = 'done' THEN 1 ELSE 0 END) AS completed
+ FROM {local_districtupdate_roster} GROUP BY reviewid");
+foreach ($districts as $d) {
+ $districtreviews = array_filter($reviews, fn($r) => (int)$r->districtid === (int)$d->id);
+ usort($districtreviews, fn($a, $b) => $cycles[$b->cycleid]->reviewyear <=> $cycles[$a->cycleid]->reviewyear);
+ $latest = $districtreviews[0] ?? null;
+ [$label, $colour] = \local_districtupdate\review_summary::state($latest, $latest ? ($stats[$latest->id] ?? null) : null);
+ if (!empty($d->archived)) { $label = 'Removed from rostering'; $colour = 'secondary'; }
+ echo html_writer::start_tag('section', ['class' => 'card mb-3 district-review', 'aria-label' => $d->name]);
+ echo html_writer::start_tag('div', ['class' => 'card-header bg-'.$colour.($colour === 'warning' || $colour === 'light' ? ' text-dark' : ' text-white')]);
+ echo html_writer::tag('h3', s($d->name), ['class' => 'h5 mb-1']).html_writer::tag('strong', s($label));
+ echo '</div><div class="card-body">';
+ $names = [];
+ foreach ($DB->get_records('local_districtupdate_access', ['districtid' => $d->id]) as $a) {
+  $u = $DB->get_record('user', ['id' => $a->userid]);
+  if ($u && !$u->deleted) { $names[] = fullname($u).' ('.$u->email.')'; }
+ }
+ echo html_writer::tag('p', '<strong>Reviewers:</strong> '.s(implode('; ', $names) ?: 'None assigned'));
+ echo '<details class="mb-3"><summary>Matching settings</summary>';
+ echo html_writer::tag('p', '<strong>Email domains:</strong> '.nl2br(s($d->domains ?: 'None')));
+ echo html_writer::tag('p', '<strong>Institution / District aliases:</strong> '.nl2br(s($d->aliases ?: 'None'))).'</details>';
+ $rows = [];
+ foreach ($districtreviews as $r) {
+  $stat = $stats[$r->id] ?? null;
+  [$status, $class] = \local_districtupdate\review_summary::state($r, $stat);
+  $statushtml = html_writer::tag('strong', s($status), ['class' => 'd-block p-2 bg-'.$class.($class === 'warning' || $class === 'light' ? ' text-dark' : ' text-white')]);
+  if ($r->submittedat) {
+   $u = $DB->get_record('user', ['id' => $r->submittedby]);
+   $statushtml .= '<small>Submitted by '.s($u ? fullname($u) : 'previous reviewer').' · '.userdate($r->submittedat).'</small>';
+  }
+  $controls = html_writer::link(new moodle_url('/local/districtupdate/review.php', ['id' => $r->id]), 'View roster');
+  $controls .= ' · '.html_writer::link(new moodle_url('/local/districtupdate/audit.php', ['reviewid' => $r->id]), 'Audit trail');
+  if (empty($d->archived)) {
+   if ($r->submittedat) {
+    $controls .= ' · '.html_writer::link(new moodle_url('/local/districtupdate/approve.php', ['reviewid' => $r->id]), 'Preview / process');
+    if (\local_districtupdate\roster_admin::can_reopen($r)) {
+     $controls .= local_districtupdate_formstart($url).local_districtupdate_hidden('reviewid', $r->id).local_districtupdate_button('Reopen review', 'action', 'reopen').'</form>';
+    }
+   } else {
+    $controls .= local_districtupdate_formstart($url).local_districtupdate_hidden('reviewid', $r->id).local_districtupdate_button('Send review link', 'action', 'invite').'</form>';
+   }
+  }
+  $rows[] = [s($cycles[$r->cycleid]->reviewyear), (int)($stat->staff ?? 0), $statushtml,
+   $r->lastsent ? userdate($r->lastsent) : 'Not sent', $controls];
+ }
+ echo $rows ? local_districtupdate_table(['Year', 'Staff', 'Review status', 'Last invitation', 'Review actions'], $rows)
+  : html_writer::tag('p', 'No annual roster yet. Create or refresh an annual roster to include this district.');
+ echo '<div class="d-flex flex-wrap align-items-center">';
+ echo html_writer::link(new moodle_url($url, ['edit' => $d->id]), 'Edit district / reviewers', ['class' => 'btn btn-outline-secondary m-1']);
+ echo local_districtupdate_formstart($url).local_districtupdate_hidden('districtid', $d->id)
+  .html_writer::tag('button', !empty($d->archived) ? 'Restore district' : 'Remove from rostering', ['type' => 'submit', 'name' => 'action', 'value' => !empty($d->archived) ? 'restore' : 'archive',
+   'class' => 'btn btn-outline-secondary m-1', 'data-confirm' => !empty($d->archived) ? 'Restore this district for rostering?' : 'Remove this district from rostering? Recorded responses and submitted history are preserved.']).'</form>';
+ echo html_writer::link(new moodle_url('/local/districtupdate/delete.php', ['districtid' => $d->id]), 'Delete permanently', ['class' => 'btn btn-outline-danger m-1']);
+ echo '</div></div></section>';
 }
-echo $rows ? local_districtupdate_table(['When', 'Activity', 'Account / recipient', 'Updated by', 'Summary'], $rows)
- : html_writer::tag('p', 'No recent notifications or configuration activity.');
 echo $OUTPUT->footer();

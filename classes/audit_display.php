@@ -16,7 +16,7 @@ final class audit_display {
   return ['pending' => 'Awaiting approval', 'processing' => 'Processing started', 'failed' => 'Needs attention', 'done' => 'Completed'][$value] ?? 'Not recorded';
  }
  public function describe(string $event, string $detail): array {
-  $labels = ['cycle_created' => 'Annual review created', 'district_configured' => 'District settings saved',
+  $labels = ['district_deleted' => 'District permanently deleted', 'cycle_created' => 'Annual review created', 'district_configured' => 'District settings saved',
    'rosters_refreshed' => 'Rosters refreshed', 'roster_account_added' => 'Added to roster',
    'roster_account_removed' => 'Removed from draft roster', 'roster_account_refreshed' => 'Roster updated',
    'response_changed' => 'Reviewer response changed', 'review_submitted' => 'Review submitted',
@@ -60,6 +60,9 @@ final class audit_display {
     $lines[] = $this->district((int)($d['districtid'] ?? 0));
     if ($event === 'district_archived') { $lines[] = 'Untouched draft entries removed: '.(int)($d['summary']['removed'] ?? 0).'; historical responses preserved: '.(int)($d['summary']['preserved'] ?? 0).'.'; }
     break;
+   case 'district_deleted':
+    $lines[] = (string)($d['name'] ?? 'Deleted district');
+    $lines[] = 'Deleted '.(int)($d['summary']['reviews'] ?? 0).' reviews and '.(int)($d['summary']['staff'] ?? 0).' roster entries. Moodle and AD accounts unchanged.'; break;
    case 'district_configured':
     $lines[] = $this->district((int)($d['districtid'] ?? 0)).' — '.(int)($d['reviewercount'] ?? 0).' assigned reviewer(s).'; break;
    case 'cycle_created': $lines[] = 'Staff review for '.(int)($d['year'] ?? 0).'.'; break;

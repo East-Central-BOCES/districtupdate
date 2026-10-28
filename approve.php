@@ -99,7 +99,8 @@ if (!empty($district->archived)) {
   if ($pending) { echo local_districtupdate_button('Preview selected accounts', 'action', 'preview').'</form>'; }
  }
 }
-echo $OUTPUT->heading('Review activity', 3);
+echo '<details class="mt-4"><summary>Review activity / audit trail</summary>';
+echo html_writer::link(new moodle_url('/local/districtupdate/audit.php', ['reviewid' => $reviewid]), 'Open audit trail');
 echo html_writer::tag('p', 'Showing the latest 200 entries. Activity history expires after '.\local_districtupdate\audit_retention::days().' days. Review responses and processing status are retained.');
 $logs = $DB->get_records_sql('SELECT a.* FROM {local_districtupdate_audit} a JOIN {local_districtupdate_roster} r ON r.id = a.rosterid
  WHERE r.reviewid = :reviewid ORDER BY a.id DESC', ['reviewid' => $reviewid], 0, 200);
@@ -113,4 +114,5 @@ foreach ($logs as $log) {
 }
 echo $rows ? local_districtupdate_table(['When', 'Staff member', 'Updated by', 'Activity', 'Summary'], $rows)
  : html_writer::tag('p', 'No recent activity recorded for this review.');
+echo '</details>';
 echo $OUTPUT->footer();
