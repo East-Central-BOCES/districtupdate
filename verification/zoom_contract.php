@@ -192,3 +192,32 @@ test('Zoom availability combines checks across pages and forgets selected result
  check(\local_districtupdate\zoom_lookup::condition('found') === [' AND 1 = 0', []]);
  expect_error(fn() => \local_districtupdate\zoom_lookup::condition('injected'), 'Unknown Zoom availability');
 });
+test('Zoom all-page check cannot be resumed by another user or changed configuration', function() {
+ global $SESSION, $USER, $CONFIG; zoom_fixture(); $SESSION = new stdClass();
+ $SESSION->local_districtupdate_zoomscan = ['id' => 'run-one', 'actorid' => (int)$USER->id,
+  'config' => zoom_api::fingerprint(), 'created' => time(), 'reviewid' => 1, 'cycleid' => 0,
+  'ids' => [1], 'offset' => 0, 'found' => 0, 'absent' => 0, 'blocked' => 0];
+ check(\local_districtupdate\zoom_lookup::scan_status(1)['total'] === 1);
+ check(\local_districtupdate\zoom_lookup::scan_status(2) === null);
+ $USER->id = 999; expect_error(fn() => \local_districtupdate\zoom_lookup::scan_step('run-one',1,0,zoom_fake()), 'expired'); $USER->id = 10;
+ $CONFIG['zoomaccountid'] = 'different'; check(\local_districtupdate\zoom_lookup::scan_status(1) === null);
+});
+test('Zoom all-page check only reads accounts and never generates a deletion approval', function() {
+ global $SESSION, $USER, $ZCALLS, $DB; zoom_fixture(); $SESSION = new stdClass();
+ $SESSION->local_districtupdate_zoomscan = ['id' => 'run-one', 'actorid' => (int)$USER->id,
+  'config' => zoom_api::fingerprint(), 'created' => time(), 'reviewid' => 1, 'cycleid' => 0,
+  'ids' => [1], 'offset' => 0, 'found' => 0, 'absent' => 0, 'blocked' => 0];
+ $result=\local_districtupdate\zoom_lookup::scan_step('run-one',1,0,zoom_fake());
+ check($result['done'] && $result['found'] === 1 && $result['checked'] === 1);
+ check(!isset($SESSION->local_districtupdate_zoom) && !array_filter($ZCALLS,fn($c)=>$c[0]==='DELETE'));
+ check($DB->tables['local_districtupdate_roster'][1]->zoomstate === 'pending');
+});
+test('Zoom all-page check pauses immediately on API errors without marking them absent', function() {
+ global $SESSION,$USER,$ZGETFAIL,$ZCALLS; zoom_fixture(); $SESSION = new stdClass(); $ZGETFAIL=true;
+ $SESSION->local_districtupdate_zoomscan=['id'=>'run-one','actorid'=>(int)$USER->id,
+  'config'=>zoom_api::fingerprint(),'created'=>time(),'reviewid'=>1,'cycleid'=>0,
+  'ids'=>[1,1,1],'offset'=>0,'found'=>0,'absent'=>0,'blocked'=>0];
+ $result=\local_districtupdate\zoom_lookup::scan_step('run-one',1,0,zoom_fake());
+ check($result['paused'] && $result['checked']===1 && $result['absent']===0 && $result['blocked']===1);
+ check(count(array_filter($ZCALLS,fn($c)=>$c[0]==='GET'))===1);
+});

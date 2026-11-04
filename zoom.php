@@ -21,6 +21,16 @@ if (!empty($SESSION->local_districtupdate_zoom['batch'])) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  require_sesskey(); $action = required_param('action', PARAM_ALPHA);
+ if ($action === 'scanstart' || $action === 'scanstep') {
+  try {
+   \core_php_time_limit::raise(180);
+   $response = $action === 'scanstart' ? \local_districtupdate\zoom_lookup::scan_start($reviewid, $cycleid)
+    : \local_districtupdate\zoom_lookup::scan_step(required_param('runid', PARAM_ALPHANUM), $reviewid, $cycleid);
+  } catch (\Throwable $e) { http_response_code(400); $response = ['error' => $e->getMessage()]; }
+  header('Content-Type: application/json; charset=utf-8'); header('Cache-Control: no-store');
+  echo json_encode($response); exit;
+ }
+
  if ($action === 'preview') {
   $batch = \local_districtupdate\zoom_cleanup::preview(optional_param_array('selected', [], PARAM_INT));
   \local_districtupdate\zoom_lookup::remember($batch);
@@ -87,7 +97,71 @@ if ($results !== null) {
   ['id' => 'zoom-availability', 'class' => 'form-select d-inline-block w-auto']);
  echo html_writer::tag('button', 'Apply filter', ['type' => 'submit', 'class' => 'btn btn-secondary m-2']).'</form>';
  echo html_writer::tag('p', 'Found / not found uses account previews from the last 30 minutes in your current login. '
-  .'Preview accounts from All departed users or Not checked recently to populate these filters. Errors are shown separately. Deletion always requires a fresh preview.');
+  .'Use Check all departures to check every page automatically, or preview selected accounts. Errors are shown separately. Deletion always requires a fresh preview.');
+ $scan = \local_districtupdate\zoom_lookup::scan_status($reviewid, $cycleid);
+ echo html_writer::start_tag('div', ['id' => 'zoom-scan', 'class' => 'border rounded p-3 my-3',
+  'data-url' => (new moodle_url('/local/districtupdate/zoom.php', ['reviewid' => $reviewid, 'cycleid' => $cycleid]))->out(false),
+  'data-sesskey' => sesskey(), 'data-runid' => $scan['runid'] ?? '']);
+ echo html_writer::tag('p', 'Check all submitted departures in this district/year across every page. This looks up accounts without deleting them.');
+ echo html_writer::tag('button', 'Check all departures', ['id' => 'zoom-scan-start', 'type' => 'button', 'class' => 'btn btn-secondary m-1']);
+ echo html_writer::tag('button', 'Resume check', ['id' => 'zoom-scan-resume', 'type' => 'button', 'class' => 'btn btn-outline-secondary m-1',
+  'hidden' => !$scan || $scan['done'] ? 'hidden' : null]);
+ echo html_writer::tag('button', 'Stop checking', ['id' => 'zoom-scan-stop', 'type' => 'button', 'class' => 'btn btn-outline-secondary m-1', 'hidden' => 'hidden']);
+ echo html_writer::tag('progress', '', ['id' => 'zoom-scan-progress', 'value' => $scan['checked'] ?? 0, 'max' => max(1, $scan['total'] ?? 1),
+  'aria-label' => 'Zoom account check progress', 'class' => 'd-block w-100 mt-2']);
+ echo html_writer::tag('p', $scan ? 'Checked '.$scan['checked'].' of '.$scan['total'].' departures.' : 'Ready to check every page.',
+  ['id' => 'zoom-scan-status', 'role' => 'status', 'aria-live' => 'polite', 'class' => 'mt-2']);
+ echo html_writer::link(new moodle_url('/local/districtupdate/zoom.php', ['reviewid' => $reviewid, 'cycleid' => $cycleid, 'availability' => 'found']), 'Show found accounts only');
+ echo '</div>';
+ $scanjs = <<<'JS'
+const scan = document.getElementById('zoom-scan');
+if (scan) {
+ const start = document.getElementById('zoom-scan-start');
+ const resume = document.getElementById('zoom-scan-resume');
+ const stop = document.getElementById('zoom-scan-stop');
+ const progress = document.getElementById('zoom-scan-progress');
+ const status = document.getElementById('zoom-scan-status');
+ let runid = scan.dataset.runid;
+ let stopping = false;
+ let complete = false;
+ let busy = false;
+ const send = async(action) => {
+  const response = await fetch(scan.dataset.url, {method: 'POST', credentials: 'same-origin', cache: 'no-store',
+   headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+   body: new URLSearchParams({action: action, sesskey: scan.dataset.sesskey, runid: runid})});
+  let result;
+  try { result = await response.json(); } catch (error) { throw new Error('The check could not continue. Check your login or reload this page to resume.'); }
+  if (!response.ok || result.error) { throw new Error(result.error || 'The Zoom account check failed.'); }
+  return result;
+ };
+ const show = (result) => {
+  runid = result.runid; complete = result.done;
+  progress.max = Math.max(1, result.total); progress.value = result.checked;
+  status.textContent = 'Checked ' + result.checked + ' of ' + result.total + '. Found: ' + result.found
+   + '. Not found: ' + result.absent + '. Need attention: ' + result.blocked + '.';
+ };
+ const run = async(fresh) => {
+  if (busy) { return; }
+  busy = true; stopping = false; complete = false;
+  start.disabled = true; resume.hidden = true; stop.hidden = false; stop.disabled = false;
+  try {
+   if (fresh) { show(await send('scanstart')); }
+   while (!complete && !stopping) {
+    const result = await send('scanstep'); show(result);
+    if (result.paused) { status.textContent += ' Check paused: ' + result.message; stopping = true; }
+    if (!complete && !stopping) { await new Promise(resolve => setTimeout(resolve, 350)); }
+   }
+   if (complete) { status.textContent += ' Check complete. Use Show found accounts only below.'; }
+   else if (stopping) { status.textContent += ' Stopped. You can resume the remaining accounts.'; }
+  } catch (error) { status.textContent = error.message; }
+  finally { busy = false; start.disabled = false; stop.hidden = true; resume.hidden = !runid || complete; }
+ };
+ start.addEventListener('click', () => run(true));
+ resume.addEventListener('click', () => run(false));
+ stop.addEventListener('click', () => { stopping = true; stop.disabled = true; status.textContent += ' Stopping after this batch...'; });
+}
+JS;
+ $PAGE->requires->js_init_code($scanjs);
  $lookups = \local_districtupdate\zoom_lookup::results();
  echo html_writer::tag('p', 'Showing up to 25 entries per page. Select accounts to check against Zoom, then preview. Previously deleted entries stay visible as completed. Not-found entries can be checked again.');
  echo $OUTPUT->paging_bar($total, $page, 25, $url);
