@@ -160,3 +160,35 @@ test('Zoom OAuth form uses literal ampersands even when Moodle enables HTML quer
   check($api->user('person@north.org') === null && $sent['account_id'] === 'account-one');
  } finally { ini_set('arg_separator.output', $previous); }
 });
+test('Zoom availability remembers preview matches and keeps errors separate without changing roster state', function() {
+ global $DB, $SESSION; zoom_fixture(); $SESSION = new stdClass();
+ $batch = zoom_cleanup::preview([1], zoom_fake());
+ \local_districtupdate\zoom_lookup::remember($batch);
+ check(\local_districtupdate\zoom_lookup::results()[1]['state'] === 'found');
+ check($DB->tables['local_districtupdate_roster'][1]->zoomstate === 'pending');
+ $batch['rows'][1]['zoom'] = null; \local_districtupdate\zoom_lookup::remember($batch);
+ check(\local_districtupdate\zoom_lookup::results()[1]['state'] === 'absent');
+ $batch['rows'][1]['error'] = 'HTTP 403'; \local_districtupdate\zoom_lookup::remember($batch);
+ check(\local_districtupdate\zoom_lookup::results()[1]['state'] === 'blocked');
+});
+test('Zoom availability expires and is isolated by current user and connection settings', function() {
+ global $SESSION, $USER, $CONFIG; zoom_fixture(); $SESSION = new stdClass();
+ $batch = zoom_cleanup::preview([1], zoom_fake()); \local_districtupdate\zoom_lookup::remember($batch);
+ $USER->id = 55; check(\local_districtupdate\zoom_lookup::results() === []); $USER->id = 10;
+ $CONFIG['zoomaccountid'] = 'new-account'; check(\local_districtupdate\zoom_lookup::results() === []); $CONFIG['zoomaccountid'] = 'account-one';
+ $SESSION->local_districtupdate_zoomlookups['rows'][1]['checked'] = time() - 1801;
+ check(\local_districtupdate\zoom_lookup::results() === []);
+});
+test('Zoom availability combines checks across pages and forgets selected results before deletion', function() {
+ global $SESSION; zoom_fixture(); $SESSION = new stdClass();
+ $batch = zoom_cleanup::preview([1], zoom_fake()); \local_districtupdate\zoom_lookup::remember($batch);
+ $batch['rows'][2] = $batch['rows'][1]; unset($batch['rows'][1]); $batch['rows'][2]['zoom'] = null;
+ \local_districtupdate\zoom_lookup::remember($batch);
+ check(array_keys(\local_districtupdate\zoom_lookup::results()) === [1, 2]);
+ [$where, $params] = \local_districtupdate\zoom_lookup::condition('found'); check(array_values($params) === [1]);
+ [$where, $params] = \local_districtupdate\zoom_lookup::condition('absent'); check(array_values($params) === [2]);
+ \local_districtupdate\zoom_lookup::forget([1]);
+ check(!isset(\local_districtupdate\zoom_lookup::results()[1]));
+ check(\local_districtupdate\zoom_lookup::condition('found') === [' AND 1 = 0', []]);
+ expect_error(fn() => \local_districtupdate\zoom_lookup::condition('injected'), 'Unknown Zoom availability');
+});

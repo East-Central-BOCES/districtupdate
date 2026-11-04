@@ -8,9 +8,9 @@ $CFG->forced_plugin_settings['local_districtupdate'] = array_merge($CFG->forced_
  ['zoomaccountid'=>'zoom-fixture-account','zoomclientid'=>'fixture-client','zoomclientsecret'=>'fixture-secret','zoomlive'=>1,'livewrites'=>0]);
 class du_zoom_rollback extends Exception {}
 function du_zoom_check(bool $ok, string $message): void { if (!$ok) { throw new RuntimeException($message); } }
-function du_zoom_render(int $reviewid): string {
+function du_zoom_render(int $reviewid, string $availability = 'all'): string {
  global $CFG, $DB, $PAGE, $OUTPUT, $USER, $SESSION;
- $_SERVER['REQUEST_METHOD']='GET'; $_POST=[]; $_GET=['reviewid'=>$reviewid]; $PAGE=new moodle_page(); ob_start();
+ $_SERVER['REQUEST_METHOD']='GET'; $_POST=[]; $_GET=['reviewid'=>$reviewid,'availability'=>$availability]; $PAGE=new moodle_page(); ob_start();
  try { require $CFG->dirroot.'/local/districtupdate/zoom.php'; } finally { $html=ob_get_clean(); }
  return $html;
 }
@@ -38,6 +38,18 @@ try {
  });
  $batch=\local_districtupdate\zoom_cleanup::preview([$rowid],$api);
  du_zoom_check(!$batch['rows'][$rowid]['error'],'Valid real-DB preview was blocked: '.$batch['rows'][$rowid]['error']);
+ \local_districtupdate\zoom_lookup::remember($batch);
+ $html=du_zoom_render($rid,'found');
+ du_zoom_check(str_contains($html,'Zoom Fixture') && str_contains($html,'name="selected[]"') && str_contains($html,'Found in Zoom'),'Found filter lost a matched account.');
+ $html=du_zoom_render($rid,'absent');
+ du_zoom_check(!str_contains($html,'name="selected[]"'),'Not-found filter incorrectly included a found account.');
+ $html=du_zoom_render($rid,'unknown');
+ du_zoom_check(!str_contains($html,'name="selected[]"'),'Unknown filter included a checked account.');
+ $DB->set_field('local_districtupdate_roster','zoomstate','done',['id'=>$rowid]);
+ du_zoom_check(!str_contains(du_zoom_render($rid,'found'),'name="selected[]"'),'Completed account remained in found filter.');
+ $DB->set_field('local_districtupdate_roster','zoomstate','pending',['id'=>$rowid]);
+ echo "PASS: availability filters apply before rendering/pagination, preserve checked results and exclude completed accounts.\n";
+
  $DB->set_field('local_districtupdate_review','revision',2,['id'=>$rid]);
  $result=\local_districtupdate\zoom_cleanup::process($batch,$api);
  du_zoom_check(str_contains($result[$rowid],'Review or identity changed') && !array_filter($calls,fn($c)=>$c[0]==='DELETE'),'Stale real-DB preview was executed.');
