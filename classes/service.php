@@ -174,7 +174,7 @@ final class service {
     foreach ($DB->get_records('local_districtupdate_roster', ['reviewid' => $review->id], 'id') as $row) {
      if (isset($byuser[$row->userid])) { self::fail('A user appears twice in this annual roster. Resolve the duplicate before refreshing.'); }
      $rows[$row->id] = $row; $byuser[$row->userid] = $row;
-     if ($row->processstate !== 'pending') { $frozen[$review->id] = true; }
+     if ($row->processstate !== 'pending' || ($row->zoomstate ?? 'pending') !== 'pending') { $frozen[$review->id] = true; }
     }
    }
    $stats['locked'] = count(array_filter($frozen));
@@ -357,8 +357,8 @@ final class service {
   try {
    $review = self::access($reviewid);
    if ($review->districtid && !self::district_active((int)$review->districtid)) { self::fail('Restore this district before reopening its review.'); }
-   if ($DB->record_exists_select('local_districtupdate_roster', "reviewid = :id AND processstate <> 'pending'", ['id' => $reviewid])) {
-    self::fail('Directory processing was attempted. This submitted review cannot be reopened.');
+   if ($DB->record_exists_select('local_districtupdate_roster', "reviewid = :id AND (processstate <> 'pending' OR zoomstate <> 'pending')", ['id' => $reviewid])) {
+    self::fail('AD or Zoom processing was attempted. This submitted review cannot be reopened.');
    }
    $review->submittedat = 0; $review->submittedby = 0; $review->revision++;
    $DB->update_record('local_districtupdate_review', $review);

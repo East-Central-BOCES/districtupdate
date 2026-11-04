@@ -68,7 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 echo $OUTPUT->header();
 echo html_writer::link(new moodle_url('/local/districtupdate/index.php'), 'Review dashboard').' · '
  .html_writer::link(new moodle_url('/admin/settings.php', ['section' => 'local_districtupdate']), 'Plugin settings').' · '
- .html_writer::link(new moodle_url('/local/districtupdate/audit.php'), 'Audit trail');
+ .html_writer::link(new moodle_url('/local/districtupdate/audit.php'), 'Audit trail').' · '
+ .html_writer::link(new moodle_url('/local/districtupdate/zoom.php'), 'Delete departed users from Zoom');
 echo $OUTPUT->notification(get_config('local_districtupdate', 'livewrites')
  ? 'Live AD processing is enabled. Each batch still requires an administrator preview and confirmation.'
  : 'Preview mode: AD writes are disabled.', 'info');
@@ -144,6 +145,7 @@ foreach ($districts as $d) {
   if (empty($d->archived)) {
    if ($r->submittedat) {
     $controls .= ' · '.html_writer::link(new moodle_url('/local/districtupdate/approve.php', ['reviewid' => $r->id]), 'Preview / process');
+    $controls .= '<br>'.html_writer::link(new moodle_url('/local/districtupdate/zoom.php', ['reviewid' => $r->id]), 'Delete departed users from Zoom');
     if (\local_districtupdate\roster_admin::can_reopen($r)) {
      $controls .= local_districtupdate_formstart($url).local_districtupdate_hidden('reviewid', $r->id).local_districtupdate_button('Reopen review', 'action', 'reopen').'</form>';
     }

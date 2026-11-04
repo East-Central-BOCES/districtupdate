@@ -52,6 +52,7 @@ namespace {
    foreach ($this->get_records($table, $where) as $id => $row) { unset($this->tables[$table][$id]); }
   }
   public function count_records_select($table, $sql, $params) {
+   if (isset($params['email'])) { return count(array_filter($this->tables[$table] ?? [], fn($r) => !$r->deleted && strtolower($r->email) === $params['email'])); }
    return count(array_filter($this->tables[$table] ?? [], fn($r) => $r->timecreated < $params['cutoff']));
   }
   public function delete_records_select($table, $sql, $params) {
@@ -59,7 +60,13 @@ namespace {
   }
   public function start_delegated_transaction() { return new class { public function allow_commit() {} }; }
   public function record_exists_select($table, $sql, $params) {
-   foreach ($this->get_records($table, ['reviewid' => $params['id']]) as $r) { if ($r->processstate !== 'pending') { return true; } } return false;
+   foreach ($this->get_records($table, ['reviewid' => $params['id']]) as $r) { if ($r->processstate !== 'pending' || (str_contains($sql, 'zoomstate') && ($r->zoomstate ?? 'pending') !== 'pending')) { return true; } } return false;
+  }
+  public function record_exists_sql($sql, $params): bool {
+   foreach ($this->tables['local_districtupdate_roster'] as $r) {
+    $v = $this->tables['local_districtupdate_review'][$r->reviewid]; $c = $this->tables['local_districtupdate_cycle'][$v->cycleid];
+    if ($r->userid == $params['userid'] && $v->districtid > 0 && $c->reviewyear >= $params['year'] && $r->status !== 'left') { return true; }
+   } return false;
   }
   public function get_in_or_equal($items, $type, $prefix) {
    $params = []; foreach (array_values($items) as $i => $value) { $params[$prefix.$i] = $value; }
@@ -90,7 +97,7 @@ namespace {
  function userdate($date) { return (string)$date; }
  class moodle_url { public function __construct(...$args) {} public function out($escaped = true) { return 'https://example.invalid/local/districtupdate/'; } }
  $base = dirname(__DIR__);
- require $base.'/classes/rules.php'; require $base.'/classes/email_templates.php'; require $base.'/classes/notification_addresses.php'; require $base.'/classes/service.php'; require $base.'/classes/reviewers.php'; require $base.'/classes/audit_display.php'; require $base.'/classes/roster_admin.php'; require $base.'/classes/review_summary.php'; require $base.'/classes/directory.php'; require $base.'/classes/processor.php';
+ require $base.'/classes/rules.php'; require $base.'/classes/email_templates.php'; require $base.'/classes/notification_addresses.php'; require $base.'/classes/service.php'; require $base.'/classes/reviewers.php'; require $base.'/classes/audit_display.php'; require $base.'/classes/zoom_api.php'; require $base.'/classes/zoom_cleanup.php'; require $base.'/classes/roster_admin.php'; require $base.'/classes/review_summary.php'; require $base.'/classes/directory.php'; require $base.'/classes/processor.php';
  $count = 0;
  function check($condition, string $message = 'Assertion failed'): void { if (!$condition) { throw new RuntimeException($message); } }
  function expect_error(callable $f, string $part): void {
@@ -158,5 +165,6 @@ namespace {
  require __DIR__.'/audit_display_contract.php';
  require __DIR__.'/refresh_contract.php';
  require __DIR__.'/directory_contract.php';
+ require __DIR__.'/zoom_contract.php';
  echo "$count checks passed. Stubbed Moodle/AD contracts only; no live server was contacted.\n";
 }

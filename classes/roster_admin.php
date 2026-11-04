@@ -7,10 +7,10 @@ final class roster_admin {
  public static function editable(object $review): bool {
   global $DB;
   return !$review->submittedat && !$DB->record_exists_select('local_districtupdate_roster',
-   "reviewid = :id AND processstate <> 'pending'", ['id' => $review->id]);
+   "reviewid = :id AND (processstate <> 'pending' OR zoomstate <> 'pending')", ['id' => $review->id]);
  }
  private static function untouched(object $row): bool {
-  return $row->status === 'still' && $row->processstate === 'pending' && !$row->modifiedby && trim($row->note) === '' && empty($row->manualassignment);
+  return $row->status === 'still' && $row->processstate === 'pending' && ($row->zoomstate ?? 'pending') === 'pending' && !$row->modifiedby && trim($row->note) === '' && empty($row->manualassignment);
  }
  public static function apply(int $sourceid, int $revision, string $action, array $assignments, array $selected): int {
   global $DB, $USER;
@@ -83,7 +83,7 @@ final class roster_admin {
  }
  public static function can_reopen(object $review): bool {
   global $DB;
-  return !$DB->record_exists_select('local_districtupdate_roster', "reviewid = :id AND processstate <> 'pending'", ['id' => $review->id]);
+  return !$DB->record_exists_select('local_districtupdate_roster', "reviewid = :id AND (processstate <> 'pending' OR zoomstate <> 'pending')", ['id' => $review->id]);
  }
  /** Delete plugin records only, with all review locks held to exclude concurrent processing and transfers. */
  public static function delete_district(int $id, string $confirmation): array {

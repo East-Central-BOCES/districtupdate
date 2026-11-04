@@ -44,6 +44,7 @@ foreach ($roster as $r) {
 echo $OUTPUT->header();
 echo html_writer::link(new moodle_url('/local/districtupdate/manage.php'), 'Manage all reviews');
 echo ' · '.html_writer::link(new moodle_url('/local/districtupdate/review.php', ['id' => $reviewid]), 'View submitted roster');
+echo html_writer::tag('p', html_writer::link(new moodle_url('/local/districtupdate/zoom.php', ['reviewid' => $reviewid]), 'Delete departed users from Zoom', ['class' => 'btn btn-outline-secondary']));
 $submitter = $DB->get_record('user', ['id' => $review->submittedby]);
 echo html_writer::tag('p', 'Submitted by '.s($submitter ? fullname($submitter) : 'a previous reviewer').' on '
  .userdate($review->submittedat).'.', ['class' => 'mt-3']);

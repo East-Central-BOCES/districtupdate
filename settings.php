@@ -32,6 +32,18 @@ if ($hassiteconfig) {
   'Set bindpassword through $CFG->forced_plugin_settings in config.php; no password is collected by this page.'));
  $settings->add(new admin_setting_configcheckbox('local_districtupdate/livewrites', 'Enable approved AD writes',
   'Off: preview only. On: administrators can preview current AD state and explicitly confirm selected changes.', 0));
+ $settings->add(new admin_setting_heading('local_districtupdate/zoom', 'Zoom account deletion',
+  'Separate, administrator-approved cleanup for submitted No longer employed responses, including departures already processed in AD. '
+  .'Deletes the Zoom user and associated data without transfer. District transfers are excluded. '
+  .'Create and activate a Server-to-Server OAuth app with user:read:user:admin and user:delete:user:admin scopes. '
+  .'Store its Client Secret in config.php using $CFG->forced_plugin_settings[\'local_districtupdate\'][\'zoomclientsecret\'] = \'YOUR_SECRET\'; before lib/setup.php. '
+  .'Keep this setting disabled until configuration is complete.'));
+ foreach (['zoomaccountid' => 'Zoom Account ID', 'zoomclientid' => 'Zoom Client ID'] as $key => $label) {
+  $settings->add(new admin_setting_configtext('local_districtupdate/'.$key, $label, 'From the Server-to-Server OAuth app credentials page.', '', PARAM_RAW_TRIMMED));
+ }
+ $settings->add(new admin_setting_configcheckbox('local_districtupdate/zoomlive', 'Enable approved Zoom deletions',
+  'Off: read-only account previews. On: administrators can explicitly confirm permanent deletion of selected departed users and their associated Zoom data. '
+  .'Independent of the AD writes setting. No Zoom changes happen when this setting is saved.', 0));
  $authoptions = [];
  foreach (core_component::get_plugin_list('auth') as $auth => $path) {
   $authoptions[$auth] = get_string('pluginname', 'auth_'.$auth).' ('.$auth.')';

@@ -14,7 +14,7 @@ final class provider implements \core_privacy\local\metadata\provider,
   'local_districtupdate_access' => ['userid'],
   'local_districtupdate_skip' => ['userid', 'actorid'],
   'local_districtupdate_review' => ['submittedby'],
-  'local_districtupdate_roster' => ['userid', 'modifiedby'],
+  'local_districtupdate_roster' => ['userid', 'modifiedby', 'zoomactor'],
   'local_districtupdate_audit' => ['userid', 'actorid'],
  ];
  public static function get_metadata(collection $collection): collection {
@@ -22,12 +22,13 @@ final class provider implements \core_privacy\local\metadata\provider,
    'local_districtupdate_access' => ['districtid','userid'],
    'local_districtupdate_skip' => ['userid','cycleid','actorid','timecreated'],
    'local_districtupdate_review' => ['cycleid','districtid','submittedby','submittedat','lastsent'],
-   'local_districtupdate_roster' => ['reviewid','userid','username','fullname','email','institution','status','destination','targetcompany','note','modifiedby','modifiedat','processstate','manualassignment'],
+   'local_districtupdate_roster' => ['reviewid','userid','username','fullname','email','institution','status','destination','targetcompany','note','modifiedby','modifiedat','processstate','manualassignment','zoomstate','zoomid','zoomaccount','zoomactor','zoomtime'],
    'local_districtupdate_audit' => ['rosterid','userid','actorid','event','detail','timecreated'],
   ];
   foreach ($fields as $table => $names) { $collection->add_database_table($table, array_fill_keys($names, 'privacy:field'), 'privacy:metadata'); }
   $collection->add_external_location_link('activedirectory', ['username' => 'privacy:field',
    'company' => 'privacy:field', 'office' => 'privacy:field', 'groups' => 'privacy:field'], 'privacy:ldap');
+  $collection->add_external_location_link('zoom', ['email' => 'privacy:field', 'zoomid' => 'privacy:field'], 'privacy:zoom');
   return $collection;
  }
  public static function get_contexts_for_userid(int $userid): contextlist {
@@ -89,6 +90,7 @@ final class provider implements \core_privacy\local\metadata\provider,
    $DB->delete_records('local_districtupdate_roster', ['userid' => $userid]);
    $DB->set_field('local_districtupdate_roster', 'note', '', ['modifiedby' => $userid]);
    $DB->set_field('local_districtupdate_roster', 'modifiedby', 0, ['modifiedby' => $userid]);
+   $DB->set_field('local_districtupdate_roster', 'zoomactor', 0, ['zoomactor' => $userid]);
    $DB->set_field('local_districtupdate_review', 'submittedby', 0, ['submittedby' => $userid]);
    foreach ($DB->get_records('local_districtupdate_review') as $review) {
     $DB->set_field('local_districtupdate_review', 'revision', $review->revision + 1, ['id' => $review->id]);

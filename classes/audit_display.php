@@ -16,7 +16,8 @@ final class audit_display {
   return ['pending' => 'Awaiting approval', 'processing' => 'Processing started', 'failed' => 'Needs attention', 'done' => 'Completed'][$value] ?? 'Not recorded';
  }
  public function describe(string $event, string $detail): array {
-  $labels = ['district_deleted' => 'District permanently deleted', 'cycle_created' => 'Annual review created', 'district_configured' => 'District settings saved',
+  $labels = ['zoom_delete_started' => 'Zoom deletion started', 'zoom_deleted' => 'Zoom user and data deleted',
+   'zoom_not_found' => 'Zoom account not found', 'zoom_delete_failed' => 'Zoom deletion not completed', 'district_deleted' => 'District permanently deleted', 'cycle_created' => 'Annual review created', 'district_configured' => 'District settings saved',
    'rosters_refreshed' => 'Rosters refreshed', 'roster_account_added' => 'Added to roster',
    'roster_account_removed' => 'Removed from draft roster', 'roster_account_refreshed' => 'Roster updated',
    'response_changed' => 'Reviewer response changed', 'review_submitted' => 'Review submitted',
@@ -78,6 +79,10 @@ final class audit_display {
     if (!empty($d['action'])) { $lines[] = (string)$d['action']; }
     if ($event === 'action_failed' && isset($d['ldapcode'])) { $lines[] = 'AD returned error code '.(int)$d['ldapcode'].'.'; }
     break;
+   case 'zoom_delete_started': $lines[] = 'Permanent Zoom account and associated data deletion approved; no data transfer.'; break;
+   case 'zoom_deleted': $lines[] = 'Zoom account absence verified. AD processing status unchanged.'; break;
+   case 'zoom_not_found': $lines[] = 'No matching Zoom account found; no deletion request sent.'; break;
+   case 'zoom_delete_failed': $lines[] = (string)($d['message'] ?? 'Use a fresh Zoom preview to retry.'); break;
    case 'processing_failed': $lines[] = (string)($d['message'] ?? 'Check the directory before trying again.'); break;
    case 'review_submitted': $lines[] = 'Submitted for administrator review.'; break;
    case 'review_reopened': $lines[] = 'Reviewer editing restored.'; break;

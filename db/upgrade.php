@@ -34,5 +34,17 @@ function xmldb_local_districtupdate_upgrade(int $oldversion): bool {
   }
   upgrade_plugin_savepoint(true, 2026102705, 'local', 'districtupdate');
  }
+ if ($oldversion < 2026110401) {
+  $dbman = $DB->get_manager(); $table = new xmldb_table('local_districtupdate_roster');
+  $fields = [
+   new xmldb_field('zoomstate', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'pending', 'manualassignment'),
+   new xmldb_field('zoomid', XMLDB_TYPE_CHAR, '128', null, null, null, null, 'zoomstate'),
+   new xmldb_field('zoomaccount', XMLDB_TYPE_CHAR, '128', null, null, null, null, 'zoomid'),
+   new xmldb_field('zoomactor', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'zoomaccount'),
+   new xmldb_field('zoomtime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'zoomactor'),
+  ];
+  foreach ($fields as $field) { if (!$dbman->field_exists($table, $field)) { $dbman->add_field($table, $field); } }
+  upgrade_plugin_savepoint(true, 2026110401, 'local', 'districtupdate');
+ }
  return true;
 }

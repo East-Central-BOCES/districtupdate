@@ -10,3 +10,5 @@ $string['privacy:field'] = 'Identity, employment response, reviewer attribution 
 $string['privacy:ldap'] = 'Approved Company, Office and group membership changes are sent to Active Directory.';
 
 $string['cleanuptaskname'] = 'Delete expired district-update audit entries';
+
+$string['privacy:zoom'] = 'Approved departed-user email lookups and permanent user/data deletion requests are sent to Zoom.';
