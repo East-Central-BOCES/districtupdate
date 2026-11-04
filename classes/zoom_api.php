@@ -10,6 +10,10 @@ final class zoom_api {
   $this->config = get_config('local_districtupdate');
   foreach (['zoomaccountid', 'zoomclientid', 'zoomclientsecret'] as $key) {
    if (empty($this->config->$key)) { service::fail('Configure the Zoom Server-to-Server OAuth credentials first ('.$key.').'); }
+   $value = (string)$this->config->$key;
+   if ($value !== trim($value) || str_contains($value, "\r") || str_contains($value, "\n")) {
+    service::fail('Zoom credential '.$key.' contains extra whitespace. Copy that value again from the app credentials page.');
+   }
   }
  }
  public static function fingerprint(): string {
@@ -35,7 +39,7 @@ final class zoom_api {
      'Content-Type: application/x-www-form-urlencoded'],
     http_build_query(['grant_type' => 'account_credentials', 'account_id' => $this->config->zoomaccountid]));
    if ($r['status'] !== 200 || empty($r['data']['access_token']) || strtolower($r['data']['token_type'] ?? '') !== 'bearer') {
-    service::fail('Zoom authentication failed. Check app activation, account credentials and scopes.');
+    $this->authentication_failure($r);
    }
    $this->token = $r['data']['access_token'];
   }
@@ -63,6 +67,32 @@ final class zoom_api {
   $r = $this->request('DELETE', '/users/'.rawurlencode($id).'?action=delete');
   if ($r['status'] !== 204) { $this->failure($r); }
   if ($this->user($id) !== null) { service::fail('Zoom deletion was accepted but account absence could not be verified. Check with a fresh preview.'); }
+ }
+ /** Expose only known OAuth identifiers and numeric codes, never a raw response or secret. */
+ private function authentication_failure(array $response): never {
+  $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+  $error = is_string($data['error'] ?? null) ? $data['error'] : '';
+  $guides = [
+   'invalid_client' => 'Zoom rejected the Client ID / Client Secret pair. Check that both come from the same app and the secret is the current unmasked value.',
+   'unsupported_grant_type' => 'These credentials must belong to a Server-to-Server OAuth app. A General/OAuth app used by a scheduler cannot use this connection method.',
+   'unauthorized_client' => 'Check that this is an activated Server-to-Server OAuth app with permission to use account credentials.',
+   'invalid_grant' => 'Check the app Account ID and that the Server-to-Server OAuth app is activated.',
+   'invalid_request' => 'Check that all three credentials belong to the same activated Server-to-Server OAuth app.',
+   'invalid_scope' => 'Check the app scopes and activation status.',
+   'access_denied' => 'Check that the app is activated and permitted by the Zoom account administrator.',
+   'server_error' => 'Zoom reported a server error. Try a fresh preview later.',
+   'temporarily_unavailable' => 'Zoom authentication is temporarily unavailable. Try a fresh preview later.',
+  ];
+  $code = $data['code'] ?? null;
+  $code = is_scalar($code) && preg_match('/^[0-9]{1,6}$/D', (string)$code) ? (string)$code : '';
+  $guide = $guides[$error] ?? match ($code) {
+   '4702', '4704', '4706' => $guides['invalid_client'],
+   '4705' => $guides['unsupported_grant_type'],
+   '4717' => 'Zoom reports that this app is disabled. Check its Activation page.',
+   default => 'Check app type, activation and that Account ID, Client ID and the current Client Secret all belong to the same app.',
+  };
+  $label = isset($guides[$error]) ? $error : 'unrecognized response';
+  service::fail('Zoom authentication failed (HTTP '.(int)$response['status'].', '.$label.($code !== '' ? ', code '.$code : '').'). '.$guide);
  }
  private function failure(array $response): never {
   service::fail('Zoom request failed (HTTP '.(int)$response['status'].', code '.(int)($response['data']['code'] ?? 0)

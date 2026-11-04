@@ -119,3 +119,28 @@ test('Zoom retries cannot silently switch the account in which a deletion was at
  $ZFAIL = true; zoom_cleanup::process($batch, $api); $CONFIG['zoomaccountid'] = 'different-account';
  check(str_contains(zoom_cleanup::preview([1], zoom_fake())['rows'][1]['error'], 'differs from the original'));
 });
+test('Zoom token failures show safe error classes and guidance without returning credentials or raw messages', function() {
+ zoom_fixture();
+ foreach (['invalid_client' => 'Client ID / Client Secret pair', 'unsupported_grant_type' => 'Server-to-Server OAuth', 'invalid_grant' => 'Account ID', 'access_denied' => 'activated'] as $error => $guide) {
+  $api = new zoom_api(fn() => ['status' => 401, 'data' => ['error' => $error, 'error_description' => 'secret-one fake-token NEVER RETURN THIS']]);
+  try { $api->user('person@north.org'); throw new RuntimeException('Expected authentication failure'); }
+  catch (moodle_exception $e) {
+   check(str_contains($e->getMessage(), 'HTTP 401, '.$error) && str_contains($e->getMessage(), $guide));
+   check(!str_contains($e->getMessage(), 'secret-one') && !str_contains($e->getMessage(), 'fake-token') && !str_contains($e->getMessage(), 'NEVER RETURN'));
+  }
+ }
+});
+test('Zoom unknown or malformed token responses never expose raw payloads', function() {
+ zoom_fixture();
+ foreach ([['error' => 'secret-one', 'code' => 'fake-token', 'message' => 'secret-one'], ['error' => ['bad'], 'code' => ['bad']], null] as $data) {
+  $api = new zoom_api(fn() => ['status' => 502, 'data' => $data]);
+  try { $api->user('person@north.org'); throw new RuntimeException('Expected authentication failure'); }
+  catch (moodle_exception $e) { check(str_contains($e->getMessage(), 'HTTP 502, unrecognized response') && !str_contains($e->getMessage(), 'secret-one') && !str_contains($e->getMessage(), 'fake-token')); }
+ }
+ $api = new zoom_api(fn() => ['status' => 400, 'data' => ['code' => 4717, 'message' => 'private']]);
+ expect_error(fn() => $api->user('person@north.org'), 'app is disabled');
+});
+test('Zoom whitespace credential mistakes are detected before sending any request', function() {
+ global $CONFIG; zoom_fixture(); $CONFIG['zoomclientsecret'] = "secret-one\n";
+ expect_error(fn() => new zoom_api(), 'zoomclientsecret contains extra whitespace');
+});
