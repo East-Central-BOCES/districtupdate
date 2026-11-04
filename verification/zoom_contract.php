@@ -144,3 +144,19 @@ test('Zoom whitespace credential mistakes are detected before sending any reques
  global $CONFIG; zoom_fixture(); $CONFIG['zoomclientsecret'] = "secret-one\n";
  expect_error(fn() => new zoom_api(), 'zoomclientsecret contains extra whitespace');
 });
+test('Zoom OAuth form uses literal ampersands even when Moodle enables HTML query separators', function() {
+ zoom_fixture(); $previous = ini_get('arg_separator.output');
+ try {
+  ini_set('arg_separator.output', '&amp;'); $sent = null;
+  $api = new zoom_api(function($method, $url, $headers, $body) use (&$sent) {
+   if ($method === 'POST') {
+    parse_str($body, $sent);
+    check($sent === ['grant_type' => 'account_credentials', 'account_id' => 'account-one']);
+    check(!str_contains($body, '&amp;'));
+    return ['status' => 200, 'data' => ['access_token' => 'fake-token', 'token_type' => 'bearer']];
+   }
+   return ['status' => 404, 'data' => ['code' => 1001]];
+  });
+  check($api->user('person@north.org') === null && $sent['account_id'] === 'account-one');
+ } finally { ini_set('arg_separator.output', $previous); }
+});

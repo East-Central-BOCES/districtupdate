@@ -37,7 +37,8 @@ final class zoom_api {
    $r = $this->http('POST', 'https://zoom.us/oauth/token',
     ['Authorization: Basic '.base64_encode($this->config->zoomclientid.':'.$this->config->zoomclientsecret),
      'Content-Type: application/x-www-form-urlencoded'],
-    http_build_query(['grant_type' => 'account_credentials', 'account_id' => $this->config->zoomaccountid]));
+    // Moodle can set arg_separator.output to &amp;; HTTP form data requires a literal ampersand.
+    http_build_query(['grant_type' => 'account_credentials', 'account_id' => $this->config->zoomaccountid], '', '&', PHP_QUERY_RFC3986));
    if ($r['status'] !== 200 || empty($r['data']['access_token']) || strtolower($r['data']['token_type'] ?? '') !== 'bearer') {
     $this->authentication_failure($r);
    }
